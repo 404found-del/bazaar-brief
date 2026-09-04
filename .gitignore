@@ -3,6 +3,11 @@ __pycache__/
 *.pyc
 out/
 out2/
+docs/
+urls.json
+caption.txt
 brand/_logo.html
 _carousel.html
 .venv/
+*.png
+!brand/avatar_*.png

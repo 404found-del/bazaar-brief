@@ -1,0 +1,105 @@
+name: Dry run (build a carousel, stop before posting)
+
+# Manual only. Proves the whole chain — render, host, build containers —
+# without putting anything on the grid.
+on:
+  workflow_dispatch:
+    inputs:
+      publish_for_real:
+        description: 'Actually publish to Instagram? Type "yes" to post.'
+        required: true
+        default: 'no'
+
+# Pages is deployed straight from the build artifact rather than committed.
+# Meta copies each image when it publishes, so the URLs only need to be live
+# for a few minutes — committing them would grow the repo ~1.2MB every day,
+# permanently, for files nobody reads again.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Inter is the whole visual identity. Without it the slides still
+      # render, just noticeably worse — so fail here rather than discover it
+      # on a published post.
+      - name: Install Inter
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-inter || true
+          if ! fc-list | grep -qi "Inter"; then
+            mkdir -p ~/.fonts
+            curl -sL -o /tmp/inter.zip \
+              https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip
+            unzip -oq /tmp/inter.zip -d /tmp/inter
+            find /tmp/inter -name '*.ttf' -exec cp {} ~/.fonts/ \;
+            fc-cache -f
+          fi
+          fc-list | grep -qi "Inter" || { echo "::error::Inter not available"; exit 1; }
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --quiet --upgrade pip
+          pip install --quiet -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Render the carousel
+        run: |
+          python run_daily.py --sample \
+            --base-url "${{ steps.pages.outputs.base_url || format('https://{0}.github.io/{1}', github.repository_owner, github.event.repository.name) }}"
+
+      - name: Show the caption
+        run: cat caption.txt
+
+      - name: Keep a copy of the slides on the run
+        uses: actions/upload-artifact@v4
+        with:
+          name: slides
+          path: docs/slides/**
+
+      - name: Package the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
+
+      # Deployment reports success slightly before the CDN serves the files.
+      - name: Wait for the slides to actually serve
+        run: |
+          URL=$(python -c "import json;print(json.load(open('urls.json'))[0])")
+          echo "polling $URL"
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' "$URL")
+            if [ "$CODE" = "200" ]; then echo "live after ~$((i*10))s"; exit 0; fi
+            echo "  attempt $i: HTTP $CODE"
+            sleep 10
+          done
+          echo "::error::slides never became reachable. Check Settings > Pages source is 'GitHub Actions'."
+          exit 1
+
+      - name: Build the carousel (dry run — nothing is posted)
+        if: ${{ github.event.inputs.publish_for_real != 'yes' }}
+        env:
+          META_LONG_LIVED_TOKEN: ${{ secrets.META_LONG_LIVED_TOKEN }}
+        run: python publish.py --urls urls.json --caption caption.txt --dry-run
+
+      - name: Publish for real
+        if: ${{ github.event.inputs.publish_for_real == 'yes' }}
+        env:
+          META_LONG_LIVED_TOKEN: ${{ secrets.META_LONG_LIVED_TOKEN }}
+        run: python publish.py --urls urls.json --caption caption.txt
