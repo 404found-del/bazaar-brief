@@ -28,9 +28,35 @@ def load_data(sample: bool):
         d = json.load(open("sample_spec.json", encoding="utf-8"))
         d["_source"] = "sample"
         return d
-    # The live data layer lands here: Kite primary, yfinance + NSE archives
-    # as fallbacks, all normalised to this same shape.
-    raise SystemExit("Live data source not wired up yet — run with --sample for now.")
+
+    import market_data
+    d = market_data.fetch_day()
+
+    # Editorial furniture the data layer has no opinion about.
+    d.setdefault("cta", "The market in 60 seconds, every trading day.")
+    d["disclaimer"] = story.DISCLAIMER
+    d["call"] = build_call(d)
+    return d
+
+
+def build_call(d):
+    """Tomorrow's prediction, pinned to a round number near today's close.
+
+    Yesterday's result is filled in by the comment-scoring step once that
+    exists; until then the slide runs without the scoreboard strip.
+    """
+    close = d["indices"][0]["close"]
+    level = round(close / 50) * 50            # nearest 50 reads as a real level
+    return {
+        "yesterday": None,
+        "today": {
+            "question": f"Nifty tomorrow: above or below {level:,.0f}?",
+            "a": "ABOVE", "b": "BELOW",
+            "ask": "Comment your call — I score it in tomorrow's post.",
+        },
+        "dm_keyword": "SECTORS",
+        "dm_promise": "the full sector table and every Nifty 50 move",
+    }
 
 
 def main():

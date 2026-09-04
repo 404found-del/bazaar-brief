@@ -65,6 +65,8 @@ def angle_breadth_divergence(d):
 
 def angle_fii_dii_divergence(d):
     """Foreign selling absorbed by domestic buying, or the reverse."""
+    if not d.get("flows"):
+        return None                       # NSE-only feed; often unavailable
     f, di = d["flows"]["fii"], d["flows"]["dii"]
     nifty = d["indices"][0]["pct"]
     if f < -500 and di > 500 and nifty > 0:
@@ -81,6 +83,29 @@ def angle_fii_dii_divergence(d):
             f"Foreign funds bought ₹{f:,.0f} crore while domestic funds sold "
             f"₹{abs(di):,.0f} crore. They rarely split this cleanly.",
         )
+    return None
+
+
+def angle_narrow_rally(d):
+    """The index rose but most of its own stocks fell.
+
+    A cap-weighted index can be dragged up by three heavyweights while the
+    other forty-seven fall. Most people's portfolios follow the forty-seven,
+    which is why this gap is worth naming.
+    """
+    b = d.get("breadth")
+    if not b or not b.get("total"):
+        return None
+    nifty = d["indices"][0]["pct"]
+    adv, dec, tot = b["advances"], b["declines"], b["total"]
+    if nifty > 0.15 and dec > adv:
+        return (92, "The index went up. Most stocks didn't.",
+                f"Nifty closed {_fmt(nifty)}, but only {adv} of its {tot} stocks rose. "
+                f"A handful of heavyweights carried the whole thing.")
+    if nifty < -0.15 and adv > dec:
+        return (88, "Red headline, green portfolio.",
+                f"Nifty fell {abs(nifty):.2f}% while {adv} of its {tot} stocks actually "
+                f"rose. The damage was concentrated in the big names.")
     return None
 
 
@@ -167,7 +192,7 @@ def angle_default(d):
 
 
 ANGLES = [
-    angle_big_move, angle_vix, angle_breadth_divergence,
+    angle_big_move, angle_narrow_rally, angle_vix, angle_breadth_divergence,
     angle_fii_dii_divergence, angle_broad, angle_flat, angle_default,
 ]
 
@@ -181,8 +206,13 @@ def pick(d):
 
 def prompts(d):
     """The comment prompts, chosen to suit the day rather than a fixed script."""
-    f, di = d["flows"]["fii"], d["flows"]["dii"]
     movers = "Holding any of these five? Drop the name below."
+    if not d.get("flows"):
+        b = d.get("breadth") or {}
+        if b.get("advances", 0) >= b.get("declines", 0):
+            return movers, "More risers than fallers. Does that match how it felt?"
+        return movers, "More fell than rose today. Bought anything into it?"
+    f, di = d["flows"]["fii"], d["flows"]["dii"]
     if f < 0 and di > 0:
         flows = "Who's right here — FIIs or DIIs? Tell me below."
     elif f > 0 and di > 0:
@@ -218,11 +248,18 @@ def caption(d, limit=2200):
            f"I score every call in the next day's post."
            ) if c.get("question") else "What are you watching tomorrow?"
 
+    if d.get("flows"):
+        numbers = (f"Nifty {_fmt(n['pct'])} at {n['close']:,.2f}  ·  "
+                   f"FII {d['flows']['fii']:+,.0f} cr  ·  DII {d['flows']['dii']:+,.0f} cr")
+    else:
+        b = d.get("breadth") or {}
+        numbers = (f"Nifty {_fmt(n['pct'])} at {n['close']:,.2f}  ·  "
+                   f"{b.get('advances', 0)} up / {b.get('declines', 0)} down")
+
     body = "\n\n".join([
         d["headline"],
         d["deck"],
-        f"Nifty {_fmt(n['pct'])} at {n['close']:,.2f}  ·  "
-        f"FII {d['flows']['fii']:+,.0f} cr  ·  DII {d['flows']['dii']:+,.0f} cr",
+        numbers,
         ask,
         "Swipe for the sector map and the full mover list.",
         DISCLAIMER,

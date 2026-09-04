@@ -260,6 +260,13 @@ def slide4(d):
 
 
 def slide5(d):
+    """Institutional flows when we have them, market breadth when we don't.
+
+    FII/DII is published only by NSE, which blocks non-Indian IPs, so this
+    slide must stand on its own without it rather than showing a blank card.
+    """
+    if not d.get("flows"):
+        return slide5_breadth(d)
     f_ = d["flows"]
     return f"""
 <div class="slide"><div class="z spread">
@@ -286,20 +293,55 @@ def slide5(d):
 </div>{foot(5,6)}</div>"""
 
 
+def slide5_breadth(d):
+    b = d.get("breadth") or {"advances": 0, "declines": 0, "total": 0}
+    adv, dec = b["advances"], b["declines"]
+    total = max(b.get("total") or (adv + dec), 1)
+    return f"""
+<div class="slide"><div class="z spread">
+  <div>
+    <div class="kicker"><span class="dot"></span>Under the surface</div>
+    <div style="margin-top:40px"><h2>How many actually<br>went up?</h2></div>
+  </div>
+  <div class="flow">
+    <div class="flow-card">
+      <div class="f-name">ADVANCED</div>
+      <div class="f-val num up">{adv}</div>
+      <div class="f-note">of {total} Nifty 50 stocks</div>
+    </div>
+    <div class="flow-card">
+      <div class="f-name">DECLINED</div>
+      <div class="f-val num down">{dec}</div>
+      <div class="f-note">of {total} Nifty 50 stocks</div>
+    </div>
+  </div>
+  <div>
+    <div class="sub">{d.get('flows_note', 'The index is an average. This is the spread underneath it.')}</div>
+    <div class="prompt-line">{d['flows_prompt']}</div>
+  </div>
+</div>{foot(5,6)}</div>"""
+
+
 def slide6(d):
     c = d["call"]
-    y, t = c["yesterday"], c["today"]
-    badge = "win" if y["correct"] else "miss"
-    badge_txt = "CALLED IT" if y["correct"] else "MISSED IT"
+    y, t = c.get("yesterday"), c["today"]
+
+    # No scoreboard on day one, or on any day the comment scoring had
+    # nothing to read. Better an honest gap than a fabricated result.
+    if y:
+        badge = "win" if y["correct"] else "miss"
+        badge_txt = "CALLED IT" if y["correct"] else "MISSED IT"
+        strip = (f'<div class="result" style="margin-top:34px">'
+                 f'<div class="badge {badge}">{badge_txt}</div>'
+                 f'<div class="r-txt"><b>{y["pct"]}%</b> of you said '
+                 f'<b>{y["side"]}</b>. {y["result"]}</div></div>')
+    else:
+        strip = ""
+
     return f"""
 <div class="slide"><div class="z">
   <div class="kicker"><span class="dot"></span>The daily call</div>
-
-  <div class="result" style="margin-top:34px">
-    <div class="badge {badge}">{badge_txt}</div>
-    <div class="r-txt"><b>{y['pct']}%</b> of you said <b>{y['side']}</b>. {y['result']}</div>
-  </div>
-
+  {strip}
   <div style="margin-top:52px">
     <div class="hero-label">Your call for tomorrow</div>
     <div class="qbig" style="margin-top:16px">{t['question']}</div>
