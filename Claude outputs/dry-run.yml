@@ -32,6 +32,14 @@ jobs:
         with:
           python-version: '3.12'
 
+      # Asks GitHub where this site will actually live. Do NOT assume
+      # <owner>.github.io/<repo>: a custom domain on the user site (here,
+      # dataarchitect.studio) is inherited by every project page, and the
+      # github.io address then permanently redirects to it.
+      - name: Work out the real Pages URL
+        id: pages
+        uses: actions/configure-pages@v5
+
       # Inter is the whole visual identity. Without it the slides still
       # render, just noticeably worse — so fail here rather than discover it
       # on a published post.
@@ -56,9 +64,17 @@ jobs:
           python -m playwright install --with-deps chromium
 
       - name: Render the carousel
+        env:
+          PAGES_BASE: ${{ steps.pages.outputs.base_url }}
         run: |
-          python run_daily.py --sample \
-            --base-url "${{ steps.pages.outputs.base_url || format('https://{0}.github.io/{1}', github.repository_owner, github.event.repository.name) }}"
+          if [ -z "$PAGES_BASE" ]; then
+            echo "::error::Pages base URL is empty — is Pages enabled with source 'GitHub Actions'?"
+            exit 1
+          fi
+          # Meta fetches these server-side and is happier over TLS.
+          PAGES_BASE="${PAGES_BASE/#http:/https:}"
+          echo "serving slides from $PAGES_BASE"
+          python run_daily.py --sample --base-url "$PAGES_BASE"
 
       - name: Show the caption
         run: cat caption.txt
@@ -87,8 +103,13 @@ jobs:
           URL=$(python -c "import json;print(json.load(open('urls.json'))[0])")
           echo "polling $URL"
           for i in $(seq 1 30); do
-            read -r CODE FINAL TYPE < <(curl -sL -o /dev/null \
-              -w '%{http_code} %{url_effective} %{content_type}' "$URL")
+            # `read` returns non-zero at EOF and curl's -w output has no
+            # trailing newline, which under `set -e` kills the step on the
+            # first attempt instead of retrying. Parse positionally instead.
+            RESP=$(curl -sL -o /dev/null \
+              -w '%{http_code} %{content_type} %{url_effective}' "$URL" || echo "000 - -")
+            set -- $RESP
+            CODE=$1; TYPE=$2; FINAL=$3
             if [ "$CODE" = "200" ]; then
               case "$TYPE" in
                 image/*) echo "live after ~$((i*10))s ($TYPE)"; exit 0 ;;
