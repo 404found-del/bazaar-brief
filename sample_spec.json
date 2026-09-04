@@ -1,0 +1,60 @@
+{
+  "kicker": "Daily wrap · Fri 04 Sep 2026",
+  "headline": "Banks did all the heavy lifting.",
+  "deck": "Nifty closed at a three-week high — but half the sectors finished red. Here's what actually moved.",
+  "indices": [
+    {"name": "Nifty 50",   "close": 26412.35, "chg": 219.80, "pct": 0.84},
+    {"name": "Sensex",     "close": 86240.11, "chg": 676.42, "pct": 0.79},
+    {"name": "Nifty Bank", "close": 59880.45, "chg": 954.10, "pct": 1.62},
+    {"name": "India VIX",  "close": 11.86,    "chg": -0.51,  "pct": -4.10}
+  ],
+  "gainers": [
+    {"name": "HDFC Bank",  "pct": 3.42},
+    {"name": "ICICI Bank", "pct": 2.88},
+    {"name": "Axis Bank",  "pct": 2.41},
+    {"name": "SBI",        "pct": 2.10},
+    {"name": "Kotak Bank", "pct": 1.76}
+  ],
+  "losers": [
+    {"name": "Tata Motors", "pct": -2.64},
+    {"name": "Hindalco",    "pct": -2.11},
+    {"name": "ONGC",        "pct": -1.85},
+    {"name": "Coal India",  "pct": -1.52},
+    {"name": "JSW Steel",   "pct": -1.30}
+  ],
+  "sectors": [
+    {"name": "Bank",        "pct": 1.62},
+    {"name": "Fin Services","pct": 1.44},
+    {"name": "Realty",      "pct": 0.97},
+    {"name": "IT",          "pct": 0.55},
+    {"name": "FMCG",        "pct": 0.21},
+    {"name": "Auto",        "pct": -0.34},
+    {"name": "Pharma",      "pct": -0.48},
+    {"name": "Media",       "pct": -0.72},
+    {"name": "Energy",      "pct": -1.06},
+    {"name": "Metal",       "pct": -1.53},
+    {"name": "PSU Bank",    "pct": -0.19},
+    {"name": "Consumer Dur","pct": 0.42}
+  ],
+  "flows": {"fii": -1284, "dii": 2967},
+  "flows_note": "Foreigners sold for the fourth straight session. Domestic funds absorbed all of it — and then some.",
+  "flows_prompt": "Who's right here — FIIs or DIIs? Tell me below.",
+  "movers_prompt": "Holding any of these five? Drop the name below.",
+  "call": {
+    "yesterday": {
+      "pct": 62,
+      "side": "ABOVE",
+      "result": "Nifty closed at 26,412 — above 26,200.",
+      "correct": true
+    },
+    "today": {
+      "question": "Nifty on Monday: above or below 26,400?",
+      "a": "ABOVE",
+      "b": "BELOW",
+      "ask": "Comment your call — I'll score it in tomorrow's post."
+    },
+    "dm_keyword": "SECTORS",
+    "dm_promise": "the full 12-sector table plus 30 days of FII/DII flows"
+  },
+  "disclaimer": "Data sourced from NSE. For information and education only — not investment advice, and not a recommendation to buy or sell any security. We are not SEBI-registered investment advisers. Please consult a registered adviser before investing."
+}

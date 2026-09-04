@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+out/
+out2/
+brand/_logo.html
+_carousel.html
+.venv/
