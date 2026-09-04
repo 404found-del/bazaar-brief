@@ -79,17 +79,29 @@ jobs:
         uses: actions/deploy-pages@v4
 
       # Deployment reports success slightly before the CDN serves the files.
+      # Pages legitimately 301s (canonicalisation, HTTPS enforcement), so
+      # follow redirects — but report where we landed, because a redirect to
+      # github.com/login means the repo is PRIVATE and Pages is gated.
       - name: Wait for the slides to actually serve
         run: |
           URL=$(python -c "import json;print(json.load(open('urls.json'))[0])")
           echo "polling $URL"
           for i in $(seq 1 30); do
-            CODE=$(curl -s -o /dev/null -w '%{http_code}' "$URL")
-            if [ "$CODE" = "200" ]; then echo "live after ~$((i*10))s"; exit 0; fi
-            echo "  attempt $i: HTTP $CODE"
+            read -r CODE FINAL TYPE < <(curl -sL -o /dev/null \
+              -w '%{http_code} %{url_effective} %{content_type}' "$URL")
+            if [ "$CODE" = "200" ]; then
+              case "$TYPE" in
+                image/*) echo "live after ~$((i*10))s ($TYPE)"; exit 0 ;;
+                *) echo "::error::$URL served $TYPE, not an image. Landed on: $FINAL"
+                   echo "::error::If that is a github.com login page, the repo is private — Pages needs it public on the free plan."
+                   exit 1 ;;
+              esac
+            fi
+            echo "  attempt $i: HTTP $CODE -> $FINAL"
             sleep 10
           done
-          echo "::error::slides never became reachable. Check Settings > Pages source is 'GitHub Actions'."
+          echo "::error::slides never became reachable. Last URL: $FINAL"
+          echo "::error::Check Settings > Pages source is 'GitHub Actions', and that the repo is Public."
           exit 1
 
       - name: Build the carousel (dry run — nothing is posted)
