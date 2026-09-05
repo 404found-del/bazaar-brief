@@ -26,6 +26,7 @@ import wave
 from num2words import num2words
 
 import story
+from build_reel import ffmpeg_bin
 
 PAD = 0.35            # breathing room after each line before the scene cuts
 MIN_SCENE = 1.5
@@ -207,14 +208,14 @@ def mix_track(clips, timings, out_wav, total):
     mix = "".join(f"[a{i}]" for i in range(len(clips)))
     filters.append(f"{mix}amix=inputs={len(clips)}:normalize=0,"
                    f"loudnorm=I=-16:TP=-1.5:LRA=11,apad=whole_dur={total}[out]")
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *inputs,
+    subprocess.run([ffmpeg_bin(), "-y", "-loglevel", "error", *inputs,
                     "-filter_complex", ";".join(filters), "-map", "[out]",
                     "-t", str(total), out_wav], check=True)
     return out_wav
 
 
 def mux(video, audio, out_path):
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-i", audio,
+    subprocess.run([ffmpeg_bin(), "-y", "-loglevel", "error", "-i", video, "-i", audio,
                     "-map", "0:v", "-map", "1:a", "-c:v", "copy",
                     "-c:a", "aac", "-b:a", "128k", "-shortest", out_path], check=True)
     return out_path

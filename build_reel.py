@@ -14,6 +14,7 @@ jittery on a loaded CI runner. This renders identically everywhere.
 """
 from __future__ import annotations
 
+import glob
 import json
 import os
 import shutil
@@ -131,6 +132,29 @@ window.frame = frame;
 """
 
 
+def ffmpeg_bin():
+    """Find ffmpeg without depending on the runner image having it.
+
+    GitHub's ubuntu-24.04 image does not ship ffmpeg, but `playwright install`
+    downloads one as a side effect — so use that rather than an apt step the
+    workflow might lose. One less thing that can silently go missing.
+    """
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    roots = [os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or "",
+             os.path.expanduser("~/.cache/ms-playwright")]
+    for root in filter(None, roots):
+        for d in sorted(glob.glob(os.path.join(root, "ffmpeg-*")), reverse=True):
+            for name in ("ffmpeg-linux", "ffmpeg", "ffmpeg.exe"):
+                p = os.path.join(d, name)
+                if os.path.isfile(p) and os.access(p, os.X_OK):
+                    return p
+    raise RuntimeError(
+        "ffmpeg not found on PATH or in the Playwright cache. "
+        "Install it, or run `python -m playwright install chromium` first.")
+
+
 def sign(v):
     return f"+{v:.2f}" if v >= 0 else f"−{abs(v):.2f}"
 
@@ -217,7 +241,7 @@ def render(spec_path, out_path, fps=FPS, duration=DURATION, scenes=None):
 
     os.makedirs(os.path.dirname(os.path.abspath(out_path)) or ".", exist_ok=True)
     cmd = [
-        "ffmpeg", "-y", "-loglevel", "error",
+        ffmpeg_bin(), "-y", "-loglevel", "error",
         "-framerate", str(fps), "-i", os.path.join(tmp, "f%05d.png"),
         # yuv420p + even dimensions: without both, the file plays on a desktop
         # and shows a black screen on half of all phones.
