@@ -1,0 +1,40 @@
+name: Token guard
+
+# The publishing token is a 60-day credential, and when it lapses the daily
+# brief simply stops — no error anyone sees, just an empty feed. This job's
+# only purpose is to make a human hear about it in time.
+#
+# The alarm is the EXIT CODE. GitHub emails you about a failed run and says
+# nothing at all about a warning, so "expiring soon" has to fail the job to
+# be worth anything.
+#
+# Note what this job does NOT do: refresh the token. /refresh_access_token
+# returns a new token string, so an auto-refresh would rotate the live
+# publishing credential every week, unattended, to prevent an outage. That
+# trade is backwards. Renewal stays a two-minute manual job, about six times
+# a year, prompted by this alarm.
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'      # Mondays, 08:30 IST — just after the morning brief
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # publish.py is stdlib-only, so there is nothing to install and nothing
+      # that can break here except the thing we are actually checking.
+      - name: Check the publishing token
+        env:
+          META_LONG_LIVED_TOKEN: ${{ secrets.META_LONG_LIVED_TOKEN }}
+        run: python publish.py --guard

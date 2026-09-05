@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
 import sys
@@ -216,7 +217,83 @@ def refresh_token(token):
                  base=REFRESH_BASE)
     days = int(r.get("expires_in", 0)) // 86400
     print(f"✓ token refreshed, valid ~{days} days")
+    record_expiry(days)
     return r["access_token"], days
+
+
+# ------------------------------------------------------- expiry bookkeeping
+#
+# Meta will not tell us when this token dies without an app secret we do not
+# hold, so we write the date down ourselves. Deliberately a READ-ONLY guard:
+# the obvious design -- refresh weekly in CI so it never expires -- would have
+# this job mutating the live publishing credential every week, and
+# /refresh_access_token hands back a NEW token string. Rotating the thing that
+# publishes, unattended, to prevent an outage is a good way to cause one.
+
+STATUS_FILE = "token_status.json"
+WARN_DAYS = 21      # visible in the run, no email
+FAIL_DAYS = 14      # fails the job, which is what actually reaches an inbox
+
+
+def _status_path():
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), STATUS_FILE)
+
+
+def record_expiry(days=None, on=None):
+    """Write down when the current token dies."""
+    when = on or (dt.date.today() + dt.timedelta(days=int(days or 0)))
+    with open(_status_path(), "w", encoding="utf-8") as f:
+        json.dump({"expires_on": when.isoformat(),
+                   "recorded_on": dt.date.today().isoformat(),
+                   "note": "Written by --refresh / --record-expiry. Commit this "
+                           "file; the weekly guard reads it."}, f, indent=2)
+    print(f"  recorded: token expires {when:%d %b %Y} ({STATUS_FILE})")
+    return when
+
+
+def read_expiry():
+    try:
+        with open(_status_path(), encoding="utf-8") as f:
+            return dt.date.fromisoformat(json.load(f)["expires_on"])
+    except (OSError, KeyError, ValueError):
+        return None
+
+
+def guard(token):
+    """Say something while there is still time to act. Exit code is the alarm.
+
+    GitHub emails on a FAILED run and says nothing about a warning, so the
+    escalation has to be a real failure, not an annotation.
+    """
+    try:
+        me = whoami(token)
+    except PublishError as e:
+        print("::error::The publishing token no longer works. Posting is already "
+              "broken. Generate a new long-lived token and update the "
+              "META_LONG_LIVED_TOKEN secret.")
+        raise
+
+    print(f"✓ token still valid — @{me.get('username')}")
+
+    expires = read_expiry()
+    if expires is None:
+        print(f"::error::No {STATUS_FILE} to check against. Run "
+              f"`python publish.py --record-expiry YYYY-MM-DD` with the date this "
+              f"token was issued plus 60 days, then commit the file.")
+        sys.exit(1)
+
+    left = (expires - dt.date.today()).days
+    print(f"  expires {expires:%d %b %Y} — {left} day(s) left")
+
+    if left <= FAIL_DAYS:
+        print(f"::error::Publishing token expires in {left} day(s), on "
+              f"{expires:%d %b %Y}. Run `python publish.py --refresh`, paste the "
+              f"new value into the META_LONG_LIVED_TOKEN secret, and commit the "
+              f"updated {STATUS_FILE}. Everything stops when it lapses.")
+        sys.exit(1)
+    if left <= WARN_DAYS:
+        print(f"::warning::Publishing token expires in {left} day(s). Refresh it "
+              f"before {expires:%d %b %Y}.")
 
 
 # --------------------------------------------------------------------- cli
@@ -243,6 +320,10 @@ def main():
     ap = argparse.ArgumentParser(description="Publish a Bazaar Brief carousel.")
     ap.add_argument("--check", action="store_true", help="verify credentials and exit")
     ap.add_argument("--refresh", action="store_true", help="refresh the long-lived token")
+    ap.add_argument("--guard", action="store_true",
+                    help="check the token is alive and not near expiry; exit 1 if it is")
+    ap.add_argument("--record-expiry", metavar="YYYY-MM-DD",
+                    help="note when the current token expires, without touching it")
     ap.add_argument("--urls", help="JSON file: a list of public image URLs, in slide order")
     ap.add_argument("--reel", help="public URL of an mp4 to publish as a Reel")
     ap.add_argument("--cover", help="public URL of the Reel's cover image")
@@ -254,6 +335,12 @@ def main():
     configured, token = load_env()
 
     try:
+        if a.record_expiry:
+            record_expiry(on=dt.date.fromisoformat(a.record_expiry))
+            return
+        if a.guard:
+            guard(token)
+            return
         if a.check:
             ig_id, me = resolve_user_id(token, configured)
             print(f"✓ connected as @{me.get('username')} "
