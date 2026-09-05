@@ -385,11 +385,14 @@ def render(spec_path, outdir, builder=None):
     """builder lets the weekly wrap swap in its own slide set while reusing
     all of this — the screenshot loop is not worth having twice."""
     from playwright.sync_api import sync_playwright
-    d = json.load(open(spec_path))
+    # encoding is not optional on Windows: the default there is cp1252, which
+    # does NOT raise on our en dashes — it silently mojibakes them into the
+    # rendered slide. The write below does raise, on the true minus sign.
+    d = json.load(open(spec_path, encoding="utf-8"))
     html = (builder or build_html)(d)
     os.makedirs(outdir, exist_ok=True)
     hp = os.path.join(outdir, "_carousel.html")
-    open(hp, "w").write(html)
+    open(hp, "w", encoding="utf-8").write(html)
     paths = []
     with sync_playwright() as p:
         b = p.chromium.launch()
