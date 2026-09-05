@@ -76,6 +76,7 @@ def main():
     ap.add_argument("--pages-dir", default="docs",
                     help="directory GitHub Pages serves (default: docs)")
     a = ap.parse_args()
+    load_local_env()
 
     today = dt.datetime.now(IST)
     stamp = today.strftime("%Y-%m-%d")
@@ -112,6 +113,22 @@ def main():
         print(f"  {u}")
 
 
+def load_local_env(name=".env"):
+    """Local runs read .env; CI passes real environment variables.
+
+    setdefault, not assignment: a value already in the environment always
+    wins, so this can never quietly override what a workflow set.
+    """
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+    if not os.path.exists(p):
+        return
+    for line in open(p, encoding="utf-8"):
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
 def build_video(data, outdir, weekly=False):
     """Narration-first Reel build. Shared by the daily brief and the weekly wrap.
 
@@ -144,13 +161,13 @@ def spec_path_for(outdir):
     return os.path.join(outdir, "spec.json")
 
 
-def render_slides(data, outdir):
+def render_slides(data, outdir, builder=None):
     """Write the spec next to the slides so a post is reproducible later."""
     os.makedirs(outdir, exist_ok=True)
     spec_path = os.path.join(outdir, "spec.json")
     with open(spec_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
-    return render(spec_path, outdir)
+    return render(spec_path, outdir, builder=builder)
 
 
 if __name__ == "__main__":

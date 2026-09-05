@@ -228,7 +228,7 @@ def slide3(d):
 <div class="slide"><div class="z spread">
   <div>
     <div class="kicker"><span class="dot"></span>Movers</div>
-    <div style="margin-top:40px"><h2>Biggest moves<br>in the Nifty 50</h2></div>
+    <div style="margin-top:40px"><h2>{d.get('h_movers') or 'Biggest moves<br>in the Nifty 50'}</h2></div>
   </div>
   <div class="barwrap">
     <div class="col-head up">Top gainers</div>
@@ -254,7 +254,7 @@ def slide4(d):
     return f"""
 <div class="slide"><div class="z">
   <div class="kicker"><span class="dot"></span>Sector map</div>
-  <div style="margin-top:40px"><h2>Which sectors<br>carried the day</h2></div>
+  <div style="margin-top:40px"><h2>{d.get('h_sectors') or 'Which sectors<br>carried the day'}</h2></div>
   <div class="heat">{cells}</div>
 </div>{foot(4,6)}</div>"""
 
@@ -381,10 +381,12 @@ def build_html(d):
     return f"<meta charset='utf-8'><style>{CSS}</style>{slides}"
 
 
-def render(spec_path, outdir):
+def render(spec_path, outdir, builder=None):
+    """builder lets the weekly wrap swap in its own slide set while reusing
+    all of this — the screenshot loop is not worth having twice."""
     from playwright.sync_api import sync_playwright
     d = json.load(open(spec_path))
-    html = build_html(d)
+    html = (builder or build_html)(d)
     os.makedirs(outdir, exist_ok=True)
     hp = os.path.join(outdir, "_carousel.html")
     open(hp, "w").write(html)

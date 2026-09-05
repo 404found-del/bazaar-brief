@@ -142,8 +142,12 @@ def ffmpeg_bin():
     exe = shutil.which("ffmpeg")
     if exe:
         return exe
+    # Playwright caches its ffmpeg in a different place on every OS, and the
+    # Linux path alone means a Windows run silently has no ffmpeg.
     roots = [os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or "",
-             os.path.expanduser("~/.cache/ms-playwright")]
+             os.path.expanduser("~/.cache/ms-playwright"),                # Linux
+             os.path.expanduser("~/Library/Caches/ms-playwright"),        # macOS
+             os.path.join(os.environ.get("LOCALAPPDATA") or "", "ms-playwright")]
     for root in filter(None, roots):
         for d in sorted(glob.glob(os.path.join(root, "ffmpeg-*")), reverse=True):
             for name in ("ffmpeg-linux", "ffmpeg", "ffmpeg.exe"):

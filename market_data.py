@@ -344,6 +344,12 @@ def week_move(series, monday, friday):
         return None
     return {"close": round(closes[-1], 2),
             "chg": round(closes[-1] - closes[0], 2),
+            # Session-by-session, because a week that climbs steadily and a
+            # week that round-trips have the same endpoints and are not the
+            # same week. Endpoints alone throw that away.
+            "path": [{"d": day.isoformat(),
+                      "pct": round((c - prev) / prev * 100.0, 2) if prev else 0.0}
+                     for (day, c), prev in zip(inside, closes[:-1])],
             "pct": round((closes[-1] - closes[0]) / closes[0] * 100.0, 2),
             "up_days": sum(1 for i in range(1, len(closes))
                            if closes[i] > closes[i - 1]),
@@ -407,12 +413,20 @@ def streaks_from(rows):
     a one-day horizon, which is exactly why it is worth a slide.
     """
     full = [r for r in rows if r["sessions"] >= 3]
-    return {
-        "up_every": sorted([r for r in full if r["up_days"] == r["sessions"]],
-                           key=lambda r: -r["pct"]),
-        "down_every": sorted([r for r in full if r["up_days"] == 0],
-                             key=lambda r: r["pct"]),
-    }
+
+    def up_by(miss):
+        return sorted([r for r in full if r["sessions"] - r["up_days"] == miss],
+                      key=lambda r: -r["pct"])
+
+    def down_by(miss):
+        return sorted([r for r in full if r["up_days"] == miss],
+                      key=lambda r: r["pct"])
+
+    # A perfect five-session run is rare — some weeks nobody manages one. The
+    # near-misses are the same story one day weaker, and without them the
+    # slide is empty more often than not.
+    return {"up_every": up_by(0), "down_every": down_by(0),
+            "up_most": up_by(1), "down_most": down_by(1)}
 
 
 def week_label(monday, friday):
@@ -447,6 +461,7 @@ def fetch_week():
         "asof": str(asof),
         "week": {"start": str(monday), "end": str(friday), "sessions": sessions},
         "indices": indices,
+        "path": indices[0].get("path") or [],
         "gainers": [{"name": r["name"], "pct": r["pct"], "up_days": r["up_days"]}
                     for r in ranked[:5]],
         "losers": [{"name": r["name"], "pct": r["pct"], "up_days": r["up_days"]}

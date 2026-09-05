@@ -19,8 +19,8 @@ import os
 import sys
 
 import story_week
-from build_carousel import render
-from run_daily import build_video, render_slides, spec_path_for
+import build_carousel_week
+from run_daily import build_video, load_local_env, render_slides
 
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 SLIDE_COUNT = 6
@@ -40,6 +40,8 @@ def load_data(sample: bool):
     d["hero_label"] = f"Nifty 50 · {sess} sessions"
     d["call_kicker"] = "The weekly call"
     d["call_lede"] = "Your call for next week"
+    d["h_movers"] = "The week's<br>biggest moves"
+    d["h_sectors"] = "Which sectors<br>carried the week"
     d["disclaimer"] = story_week.DISCLAIMER
     d["call"] = story_week.build_call(d)
     return d
@@ -54,6 +56,7 @@ def main():
     ap.add_argument("--pages-dir", default="docs",
                     help="directory GitHub Pages serves (default: docs)")
     a = ap.parse_args()
+    load_local_env()
 
     data = load_data(a.sample)
     story_week.apply(data)
@@ -63,7 +66,7 @@ def main():
     # the kicker names the session rather than the runtime.
     stamp = f"week-{data['asof']}"
     outdir = os.path.join(a.pages_dir, "slides", stamp)
-    paths = render_slides(data, outdir)
+    paths = render_slides(data, outdir, builder=build_carousel_week.build_html)
     if len(paths) != SLIDE_COUNT:
         sys.exit(f"expected {SLIDE_COUNT} slides, rendered {len(paths)}")
 

@@ -14,7 +14,29 @@
       "up_days": 3,
       "sessions": 5,
       "asof": "2026-09-04",
-      "chg": 308.03
+      "chg": 308.03,
+      "path": [
+        {
+          "d": "2026-08-31",
+          "pct": -0.94
+        },
+        {
+          "d": "2026-09-01",
+          "pct": 0.38
+        },
+        {
+          "d": "2026-09-02",
+          "pct": 1.12
+        },
+        {
+          "d": "2026-09-03",
+          "pct": -0.21
+        },
+        {
+          "d": "2026-09-04",
+          "pct": 0.85
+        }
+      ]
     },
     {
       "name": "Sensex",
@@ -157,9 +179,65 @@
         "up_days": 0,
         "sessions": 5
       }
+    ],
+    "up_most": [
+      {
+        "name": "Bajaj Finance",
+        "pct": 3.11,
+        "up_days": 4,
+        "sessions": 5
+      },
+      {
+        "name": "Titan",
+        "pct": 1.42,
+        "up_days": 4,
+        "sessions": 5
+      }
+    ],
+    "down_most": [
+      {
+        "name": "Infosys",
+        "pct": -4.18,
+        "up_days": 1,
+        "sessions": 5
+      },
+      {
+        "name": "Tech Mahindra",
+        "pct": -2.74,
+        "up_days": 1,
+        "sessions": 5
+      },
+      {
+        "name": "Nestle India",
+        "pct": -1.31,
+        "up_days": 1,
+        "sessions": 5
+      }
     ]
   },
   "flows": null,
   "_source": "sample",
-  "_weekly": true
+  "_weekly": true,
+  "path": [
+    {
+      "d": "2026-08-31",
+      "pct": -0.94
+    },
+    {
+      "d": "2026-09-01",
+      "pct": 0.38
+    },
+    {
+      "d": "2026-09-02",
+      "pct": 1.12
+    },
+    {
+      "d": "2026-09-03",
+      "pct": -0.21
+    },
+    {
+      "d": "2026-09-04",
+      "pct": 0.85
+    }
+  ]
 }
