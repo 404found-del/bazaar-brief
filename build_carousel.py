@@ -338,6 +338,23 @@ def slide6(d):
     else:
         strip = ""
 
+    # The DM offer only appears once something can actually answer it. An
+    # unanswered "comment X and I'll send you Y" is a broken promise to the
+    # exact people who engaged first — the worst possible audience to lose.
+    if c.get("dm_keyword"):
+        dmbox = (f'<div class="dmbox">'
+                 f'<div class="d-big">Want the numbers behind this? Comment '
+                 f'<em>{c["dm_keyword"]}</em></div>'
+                 f'<div class="d-small">I\'ll DM you {c["dm_promise"]} — free, no catch.</div>'
+                 f'</div>')
+    else:
+        # Something we can always deliver, in the space the offer would fill.
+        dmbox = ('<div class="dmbox">'
+                 '<div class="d-big">New here? This runs every trading morning.</div>'
+                 '<div class="d-small">Yesterday\'s close, the sector map and the movers '
+                 '— posted before the 9:15 open, every weekday.</div>'
+                 '</div>')
+
     return f"""
 <div class="slide"><div class="z">
   <div class="kicker"><span class="dot"></span>The daily call</div>
@@ -353,10 +370,7 @@ def slide6(d):
   </div>
   <div class="ask">{t['ask']}</div>
 
-  <div class="dmbox">
-    <div class="d-big">Want the numbers behind this? Comment <em>{c['dm_keyword']}</em></div>
-    <div class="d-small">I'll DM you {c['dm_promise']} — free, no catch.</div>
-  </div>
+  {dmbox}
 
   <div class="thindisc">{d['disclaimer']}</div>
 </div>{foot(6,6,swipe=False)}</div>"""

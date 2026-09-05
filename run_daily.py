@@ -57,7 +57,9 @@ def build_call(d):
             "a": "ABOVE", "b": "BELOW",
             "ask": "Comment your call before 9:15 — I score it tomorrow morning.",
         },
-        "dm_keyword": "SECTORS",
+        # Switched on once ManyChat exists to answer it. Until then the
+        # slide simply doesn't make the offer.
+        "dm_keyword": os.environ.get("BB_DM_KEYWORD") or None,
         "dm_promise": "the full sector table and every Nifty 50 move",
     }
 
