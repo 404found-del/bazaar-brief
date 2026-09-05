@@ -1,0 +1,165 @@
+{
+  "kicker": "The week · 31 Aug–04 Sep 2026",
+  "asof": "2026-09-04",
+  "week": {
+    "start": "2026-08-31",
+    "end": "2026-09-04",
+    "sessions": 5
+  },
+  "indices": [
+    {
+      "name": "Nifty 50",
+      "close": 26412.35,
+      "pct": 1.18,
+      "up_days": 3,
+      "sessions": 5,
+      "asof": "2026-09-04",
+      "chg": 308.03
+    },
+    {
+      "name": "Sensex",
+      "close": 86241.1,
+      "pct": 1.02,
+      "up_days": 3,
+      "sessions": 5,
+      "asof": "2026-09-04",
+      "chg": 870.78
+    }
+  ],
+  "gainers": [
+    {
+      "name": "Tata Steel",
+      "pct": 7.84,
+      "up_days": 4
+    },
+    {
+      "name": "JSW Steel",
+      "pct": 6.12,
+      "up_days": 4
+    },
+    {
+      "name": "Hindalco",
+      "pct": 5.4,
+      "up_days": 3
+    },
+    {
+      "name": "Adani Ports",
+      "pct": 4.71,
+      "up_days": 3
+    },
+    {
+      "name": "SBI Life",
+      "pct": 4.02,
+      "up_days": 5
+    }
+  ],
+  "losers": [
+    {
+      "name": "HCL Tech",
+      "pct": -5.63,
+      "up_days": 0
+    },
+    {
+      "name": "Infosys",
+      "pct": -4.18,
+      "up_days": 1
+    },
+    {
+      "name": "TCS",
+      "pct": -3.55,
+      "up_days": 1
+    },
+    {
+      "name": "Wipro",
+      "pct": -3.1,
+      "up_days": 1
+    },
+    {
+      "name": "Tech Mahindra",
+      "pct": -2.74,
+      "up_days": 2
+    }
+  ],
+  "sectors": [
+    {
+      "name": "Metal",
+      "pct": 5.91
+    },
+    {
+      "name": "Realty",
+      "pct": 2.34
+    },
+    {
+      "name": "Bank",
+      "pct": 1.77
+    },
+    {
+      "name": "Fin Services",
+      "pct": 1.52
+    },
+    {
+      "name": "Infra",
+      "pct": 1.16
+    },
+    {
+      "name": "Auto",
+      "pct": 0.84
+    },
+    {
+      "name": "Energy",
+      "pct": 0.41
+    },
+    {
+      "name": "Consumer Dur",
+      "pct": 0.12
+    },
+    {
+      "name": "FMCG",
+      "pct": -0.36
+    },
+    {
+      "name": "Pharma",
+      "pct": -0.92
+    },
+    {
+      "name": "Media",
+      "pct": -1.88
+    },
+    {
+      "name": "IT",
+      "pct": -3.84
+    }
+  ],
+  "breadth": {
+    "advances": 24,
+    "declines": 26,
+    "total": 50
+  },
+  "streaks": {
+    "up_every": [
+      {
+        "name": "SBI Life",
+        "pct": 4.02,
+        "up_days": 5,
+        "sessions": 5
+      },
+      {
+        "name": "Britannia",
+        "pct": 2.15,
+        "up_days": 5,
+        "sessions": 5
+      }
+    ],
+    "down_every": [
+      {
+        "name": "HCL Tech",
+        "pct": -5.63,
+        "up_days": 0,
+        "sessions": 5
+      }
+    ]
+  },
+  "flows": null,
+  "_source": "sample",
+  "_weekly": true
+}

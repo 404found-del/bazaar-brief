@@ -292,8 +292,176 @@ def fetch_day():
     return data
 
 
+
+# =========================================================================
+# The week
+#
+# A separate path rather than a generalisation of the daily one. The daily
+# code is about to start publishing unattended and a refactor underneath it
+# buys nothing; the duplication here is small and deliberate.
+#
+# The window is chosen by DATE, never by counting back five bars. A week with
+# a Wednesday holiday has four sessions, and counting would quietly reach
+# back into the previous week and label the result "this week".
+# =========================================================================
+
+MIN_WEEK_SESSIONS = 2       # a holiday-shortened week is still a week
+WEEK_PERIOD = "1mo"         # needs the session before Monday for the baseline
+
+
+def _series(hist):
+    """[(date, close)] ascending, NaNs dropped. Plain Python from here on."""
+    h = hist.dropna(subset=["Close"])
+    out = []
+    for idx, close in zip(h.index, h["Close"].tolist()):
+        d = idx.date() if hasattr(idx, "date") else None
+        if d is not None:
+            out.append((d, float(close)))
+    return out
+
+
+def week_bounds(asof):
+    """Monday of asof's week, through asof itself."""
+    return asof - dt.timedelta(days=asof.weekday()), asof
+
+
+def week_move(series, monday, friday):
+    """The week's move, or None if the week is too thin to describe.
+
+    A dict rather than a tuple: callers pick fields by name, so adding one
+    later cannot silently shift what an existing caller reads.
+
+    The baseline is the last close BEFORE Monday, so the week's move is
+    measured from where the previous week left off — a Monday gap belongs to
+    this week, not the last one.
+    """
+    inside = [(d, c) for d, c in series if monday <= d <= friday]
+    before = [c for d, c in series if d < monday]
+    if len(inside) < MIN_WEEK_SESSIONS or not before:
+        return None
+    closes = [before[-1]] + [c for _, c in inside]
+    if not closes[0]:
+        return None
+    return {"close": round(closes[-1], 2),
+            "chg": round(closes[-1] - closes[0], 2),
+            "pct": round((closes[-1] - closes[0]) / closes[0] * 100.0, 2),
+            "up_days": sum(1 for i in range(1, len(closes))
+                           if closes[i] > closes[i - 1]),
+            "sessions": len(inside)}
+
+
+def fetch_indices_week(yf, monday=None):
+    out, asof = [], None
+    for name, ticker in INDICES:
+        try:
+            s = _series(yf.Ticker(ticker).history(period=WEEK_PERIOD))
+            if not s:
+                print(f"  ! {name} ({ticker}): no usable history", file=sys.stderr)
+                continue
+            end = s[-1][0]
+            mon = monday or week_bounds(end)[0]
+            m = week_move(s, mon, end)
+            if m is None:
+                print(f"  ! {name} ({ticker}): not enough of the week to measure",
+                      file=sys.stderr)
+                continue
+            if name == "Nifty 50":
+                asof = end
+            out.append({"name": name, "asof": str(end), **m})
+        except Exception as e:
+            print(f"  ! {name} ({ticker}): {type(e).__name__}: {e}", file=sys.stderr)
+    if not out or out[0]["name"] != "Nifty 50":
+        raise DataError("Nifty 50 is mandatory and could not be fetched")
+    return out, asof
+
+
+def fetch_stocks_week(yf, monday, friday):
+    symbols = [f"{s}.NS" for s in CONSTITUENTS]
+    data = yf.download(symbols, period=WEEK_PERIOD, group_by="ticker",
+                       progress=False, threads=True, auto_adjust=False)
+    rows, missing = [], []
+    for sym, (label, sector) in CONSTITUENTS.items():
+        try:
+            m = week_move(_series(data[f"{sym}.NS"]), monday, friday)
+            if m is None:
+                missing.append(sym)
+                continue
+            rows.append({"name": label, "sector": sector, "pct": m["pct"],
+                         "up_days": m["up_days"], "sessions": m["sessions"]})
+        except Exception:
+            missing.append(sym)
+    if missing:
+        print(f"  ! {len(missing)} constituent(s) returned nothing: "
+              f"{', '.join(missing)}", file=sys.stderr)
+    if len(rows) < 40:
+        raise DataError(f"only {len(rows)} of {len(CONSTITUENTS)} stocks returned data — "
+                        f"too thin to describe the week honestly")
+    return rows
+
+
+def streaks_from(rows):
+    """The thing a daily post structurally cannot show.
+
+    A stock that gains 0.4% every session for a week never once appears in a
+    day's top five, and finishes the week up 2%. Consistency is invisible at
+    a one-day horizon, which is exactly why it is worth a slide.
+    """
+    full = [r for r in rows if r["sessions"] >= 3]
+    return {
+        "up_every": sorted([r for r in full if r["up_days"] == r["sessions"]],
+                           key=lambda r: -r["pct"]),
+        "down_every": sorted([r for r in full if r["up_days"] == 0],
+                             key=lambda r: r["pct"]),
+    }
+
+
+def week_label(monday, friday):
+    if monday.month == friday.month:
+        return f"{monday:%d}\u2013{friday:%d %b %Y}"
+    return f"{monday:%d %b}\u2013{friday:%d %b %Y}"
+
+
+def fetch_week():
+    try:
+        import yfinance as yf
+    except ImportError:
+        raise DataError("yfinance is not installed (pip install yfinance)")
+
+    print("fetching indices…")
+    indices, asof = fetch_indices_week(yf)
+
+    # Same guard as the daily path, same reason: a wrap labelled with the
+    # wrong week is worse than no wrap. On a Saturday the session owed is
+    # Friday, which is what previous_session resolves to.
+    age = check_freshness(asof, os.environ.get("BB_MODE", "previous_session"))
+    print(f"week ends {asof} ({age} session(s) old) — freshness OK")
+
+    monday, friday = week_bounds(asof)
+    print(f"fetching constituents for {monday} … {friday}")
+    stocks = fetch_stocks_week(yf, monday, friday)
+
+    ranked = sorted(stocks, key=lambda r: -r["pct"])
+    sessions = max((r["sessions"] for r in stocks), default=0)
+    return {
+        "kicker": f"The week · {week_label(monday, friday)}",
+        "asof": str(asof),
+        "week": {"start": str(monday), "end": str(friday), "sessions": sessions},
+        "indices": indices,
+        "gainers": [{"name": r["name"], "pct": r["pct"], "up_days": r["up_days"]}
+                    for r in ranked[:5]],
+        "losers": [{"name": r["name"], "pct": r["pct"], "up_days": r["up_days"]}
+                   for r in ranked[-5:]][::-1],
+        "sectors": sectors_from(stocks),
+        "breadth": breadth_from(stocks),
+        "streaks": streaks_from(stocks),
+        "flows": None,
+        "_source": "yahoo",
+        "_stocks": len(stocks),
+        "_weekly": True,
+    }
+
 if __name__ == "__main__":
     import json
-    d = fetch_day()
+    d = fetch_week() if "--week" in sys.argv else fetch_day()
     d.pop("_stocks", None)
     print(json.dumps(d, indent=2))

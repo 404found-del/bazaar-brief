@@ -196,7 +196,8 @@ def build_html(d, scenes=SCENES):
         '<div class="glow"></div>'
         + scene("hook", f'<h1 data-stagger>{d["headline"]}</h1>'
                         f'<div class="deck" data-stagger>{d["deck"]}</div>')
-        + scene("hero", f'<div data-stagger><div class="hero-label">Nifty 50 · close</div>'
+        + scene("hero", f'<div data-stagger><div class="hero-label">'
+                        f'{d.get("hero_label") or "Nifty 50 · close"}</div>'
                         f'<div class="hero num {cls(n["pct"])}" data-count="{n["pct"]}">'
                         f'{sign(n["pct"])}</div>'
                         f'<div class="hero-sub num">{n["close"]:,.2f}</div></div>')

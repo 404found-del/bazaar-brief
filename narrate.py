@@ -82,9 +82,12 @@ def crore(v):
 
 # --------------------------------------------------------------- script
 
-def lines(d):
+def lines(d, weekly=False):
     """One line per scene, in scene order. Short sentences: a long clause
-    read by any synthesiser starts to drift."""
+    read by any synthesiser starts to drift.
+
+    `weekly` shifts the framing only — same five beats, a week's horizon.
+    """
     n = d["indices"][0]
     b = d.get("breadth") or {}
     top = d["gainers"][0] if d.get("gainers") else None
@@ -99,7 +102,8 @@ def lines(d):
     # Every clause costs a second and a second costs completion. "closed",
     # "stocks", "today" and the commas before each number all read as pauses
     # and carry nothing the picture is not already showing.
-    hero = f"Nifty {pct(n['pct'])}."
+    hero = (f"Nifty finished the week {pct(n['pct'])}." if weekly
+            else f"Nifty {pct(n['pct'])}.")
     if b.get("total"):
         hero += f" {words(b['advances'])} of fifty rose."
     out.append(("hero", hero))
@@ -113,8 +117,10 @@ def lines(d):
                     f"{bot['name']} {pct(bot['pct'])}."))
 
     lvl = c.get("level")
-    spoken = (f"Above or below {level(lvl)}"
-              if lvl else "Where does it close today")
+    when = " next Friday" if weekly else ""
+    spoken = (f"Above or below {level(lvl)}{when}"
+              if lvl else ("Where does it close next week" if weekly
+                           else "Where does it close today"))
     out.append(("call", f"{spoken}? Comment your call."))
     return out
 
@@ -273,7 +279,7 @@ def fit(voice, script, outdir, budget=MAX_TOTAL):
     return clips
 
 
-def narrate(d, outdir, voice=None):
+def narrate(d, outdir, voice=None, weekly=False):
     """Synthesise the day's narration, inside the length budget.
 
     Returns None when no voice is configured — the Reel then renders silent
@@ -283,7 +289,7 @@ def narrate(d, outdir, voice=None):
     if voice is None:
         return None
     os.makedirs(outdir, exist_ok=True)
-    clips = fit(voice, lines(d), outdir)
+    clips = fit(voice, lines(d, weekly), outdir)
     for c in clips:
         print(f"  {c[0]:8} {c[3]:5.2f}s  {c[1][:64]}")
     total = _total(clips)

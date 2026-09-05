@@ -94,25 +94,7 @@ def main():
 
     # The Reel is the discovery vehicle; the carousel is what converts the
     # people it brings. Same data, same day, different job.
-    reel_path = os.path.join(outdir, "reel.mp4")
-    spec = spec_path_for(outdir)
-
-    # Narration first: the scene timings come from how long each line actually
-    # takes to say. No voice configured is a supported outcome — the Reel then
-    # renders silent on its default timings.
-    clips = narrate.narrate(data, os.path.join(outdir, "vo"))
-    if clips:
-        timings = narrate.scene_timings(clips)
-        total = max(b for _, _, b in timings)
-        silent = os.path.join(outdir, "_silent.mp4")
-        render_reel(spec, silent, scenes=timings)
-        track = os.path.join(outdir, "vo", "track.wav")
-        narrate.mix_track(clips, timings, track, total)
-        narrate.mux(silent, track, reel_path)
-        os.remove(silent)
-    else:
-        print("no voice configured — rendering a silent reel")
-        render_reel(spec, reel_path)
+    reel_path = build_video(data, outdir)
     reel_url = f"{base}/slides/{stamp}/reel.mp4"
     with open("reel_url.txt", "w", encoding="utf-8") as f:
         f.write(reel_url)
@@ -128,6 +110,34 @@ def main():
     print(f"caption: {len(cap)} chars")
     for u in urls:
         print(f"  {u}")
+
+
+def build_video(data, outdir, weekly=False):
+    """Narration-first Reel build. Shared by the daily brief and the weekly wrap.
+
+    Narration comes FIRST: the scene timings are measured from how long each
+    line actually takes to say. No voice configured is a supported outcome —
+    the Reel then renders silent on its default timings.
+
+    One copy on purpose. Two runners with their own version of this is how a
+    fix lands in one and not the other.
+    """
+    reel_path = os.path.join(outdir, "reel.mp4")
+    spec = spec_path_for(outdir)
+    clips = narrate.narrate(data, os.path.join(outdir, "vo"), weekly=weekly)
+    if clips:
+        timings = narrate.scene_timings(clips)
+        total = max(b for _, _, b in timings)
+        silent = os.path.join(outdir, "_silent.mp4")
+        render_reel(spec, silent, scenes=timings)
+        track = os.path.join(outdir, "vo", "track.wav")
+        narrate.mix_track(clips, timings, track, total)
+        narrate.mux(silent, track, reel_path)
+        os.remove(silent)
+    else:
+        print("no voice configured — rendering a silent reel")
+        render_reel(spec, reel_path)
+    return reel_path
 
 
 def spec_path_for(outdir):

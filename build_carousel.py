@@ -183,7 +183,7 @@ def slide1(d):
   <div class="kicker"><span class="dot"></span>{d['kicker']}</div>
   <h1>{d['headline']}</h1>
   <div>
-    <div class="hero-label">{idx['name']} · Close</div>
+    <div class="hero-label">{d.get('hero_label') or (idx['name'] + ' · Close')}</div>
     <div class="hero-figure num {cls(idx['pct'])}" style="margin-top:18px">{sign(idx['pct'])}%</div>
     <div class="sub num" style="margin-top:26px">{idx['close']:,.2f} &nbsp;·&nbsp; {sign(idx['chg'])} pts</div>
   </div>
@@ -357,10 +357,10 @@ def slide6(d):
 
     return f"""
 <div class="slide"><div class="z">
-  <div class="kicker"><span class="dot"></span>The daily call</div>
+  <div class="kicker"><span class="dot"></span>{d.get('call_kicker') or 'The daily call'}</div>
   {strip}
   <div style="margin-top:52px">
-    <div class="hero-label">Your call for tomorrow</div>
+    <div class="hero-label">{d.get('call_lede') or 'Your call for tomorrow'}</div>
     <div class="qbig" style="margin-top:16px">{t['question']}</div>
   </div>
 

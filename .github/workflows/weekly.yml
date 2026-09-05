@@ -1,11 +1,12 @@
-name: Daily brief
+name: Weekly wrap
 
-# 02:30 UTC = 08:00 IST, Mon-Fri — before the 9:15 open, using the previous
-# session's fully-settled data. GitHub's scheduler can run a few minutes late
-# under load; harmless here, since nothing depends on the exact minute.
+# 03:30 UTC Saturday = 09:00 IST, when someone actually has time to sit with
+# a six-slide carousel. Weekday 08:00 is commute-scroll; Saturday morning is
+# not, and most India markets accounts go quiet at the weekend, so the same
+# post competes against less.
 on:
   schedule:
-    - cron: '30 2 * * 1-5'
+    - cron: '30 3 * * 6'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -18,9 +19,10 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:            # never let two runs publish at once — the weekly
-                        # wrap shares this group because both deploy to the
-                        # same Pages site
+# Shared with the daily brief on purpose: both deploy to the same Pages site,
+# and two runs deploying different slides at once would serve one post's
+# images under the other's URLs.
+concurrency:
   group: bazaar-brief-publish
   cancel-in-progress: false
 
@@ -54,14 +56,13 @@ jobs:
           python -m playwright install --with-deps chromium
           sudo apt-get install -y -qq ffmpeg
 
-      # market_data refuses to proceed if the session it gets back isn't the
-      # one a morning brief is owed, so a stale feed fails here rather than
-      # putting the wrong day's market on the grid.
-      - name: Build the brief
+      # On a Saturday the session owed is Friday's, which is exactly what
+      # previous_session resolves to. A stale feed fails here rather than
+      # putting the wrong week on the grid.
+      - name: Build the wrap
         env:
           BB_MODE: previous_session
           PAGES_BASE: ${{ steps.pages.outputs.base_url }}
-          # Absent -> the Reel renders silent. Present -> Indian-English narration.
           AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
           AZURE_SPEECH_REGION: ${{ secrets.AZURE_SPEECH_REGION }}
           AZURE_VOICE: ${{ vars.AZURE_VOICE }}
@@ -72,14 +73,14 @@ jobs:
           fi
           PAGES_BASE="${PAGES_BASE/#http:/https:}"
           echo "serving slides from $PAGES_BASE"
-          python run_daily.py --base-url "$PAGES_BASE"
+          python run_weekly.py --base-url "$PAGES_BASE"
           echo "--- caption ---"
           cat caption.txt
 
-      - name: Keep a copy of today's post
+      - name: Keep a copy of this week's post
         uses: actions/upload-artifact@v4
         with:
-          name: brief-${{ github.run_number }}
+          name: wrap-${{ github.run_number }}
           path: |
             docs/slides/**
             caption.txt
@@ -121,10 +122,6 @@ jobs:
           META_LONG_LIVED_TOKEN: ${{ secrets.META_LONG_LIVED_TOKEN }}
         run: python publish.py --urls urls.json --caption caption.txt
 
-      # The Reel is what reaches people who don't follow you yet. It goes out
-      # even if the carousel failed — they are independent posts, and losing
-      # the discovery post because the conversion post broke is the wrong
-      # trade.
       - name: Post the Reel
         if: ${{ always() && (github.event_name == 'schedule' || github.event.inputs.dry_run != 'yes') }}
         env:
@@ -134,11 +131,6 @@ jobs:
             --reel "$(cat reel_url.txt)" \
             --cover "$(python -c "import json;print(json.load(open('urls.json'))[0])")"
 
-      # Both containers are built and polled to FINISHED, then thrown away.
-      # The Reel matters most here: Meta has to fetch the mp4 off the domain
-      # and transcode it, which is the slowest step in the pipeline and the
-      # one most likely to fail. Exercising it on a dry run means the first
-      # live post is not also the first time that code has ever run.
       - name: Dry run only (manual runs default to this)
         if: ${{ github.event_name != 'schedule' && github.event.inputs.dry_run == 'yes' }}
         env:
@@ -149,11 +141,6 @@ jobs:
             --reel "$(cat reel_url.txt)" \
             --cover "$(python -c "import json;print(json.load(open('urls.json'))[0])")"
 
-  # Instagram copies each image when it builds the container, and serves its
-  # own copy from then on — the source URL is never fetched again. So once the
-  # post is live the slides have no reason to sit on dataarchitect.studio.
-  # Runs only if the post job succeeded: a failed publish keeps its slides so
-  # a re-run can still reach them.
   cleanup:
     needs: post
     if: success()
