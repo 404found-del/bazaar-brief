@@ -11,3 +11,4 @@ _carousel.html
 .venv/
 *.png
 !brand/avatar_*.png
+out_local/
