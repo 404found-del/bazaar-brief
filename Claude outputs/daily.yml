@@ -119,3 +119,41 @@ jobs:
         env:
           META_LONG_LIVED_TOKEN: ${{ secrets.META_LONG_LIVED_TOKEN }}
         run: python publish.py --urls urls.json --caption caption.txt --dry-run
+
+  # Instagram copies each image when it builds the container, and serves its
+  # own copy from then on — the source URL is never fetched again. So once the
+  # post is live the slides have no reason to sit on dataarchitect.studio.
+  # Runs only if the post job succeeded: a failed publish keeps its slides so
+  # a re-run can still reach them.
+  cleanup:
+    needs: post
+    if: success()
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    steps:
+      - name: Build an empty site
+        run: |
+          mkdir -p empty
+          cat > empty/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <title>Bazaar Brief</title>
+          <p style="font:16px system-ui;max-width:40em;margin:4em auto;padding:0 1em">
+            Nothing lives here. Post images are hosted for the minute it takes
+            Instagram to fetch them, then removed.
+          </p>
+          HTML
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: empty
+          name: github-pages-empty
+
+      - name: Clear the slides from the domain
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-empty
