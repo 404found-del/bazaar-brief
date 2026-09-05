@@ -52,7 +52,6 @@ CONSTITUENTS = {
     "HCLTECH": ("HCL Tech", "IT"),
     "WIPRO": ("Wipro", "IT"),
     "TECHM": ("Tech Mahindra", "IT"),
-    "LTIM": ("LTIMindtree", "IT"),
     "RELIANCE": ("Reliance", "Energy"),
     "ONGC": ("ONGC", "Energy"),
     "BPCL": ("BPCL", "Energy"),
@@ -65,7 +64,7 @@ CONSTITUENTS = {
     "BRITANNIA": ("Britannia", "FMCG"),
     "TATACONSUM": ("Tata Consumer", "FMCG"),
     "MARUTI": ("Maruti", "Auto"),
-    "TATAMOTORS": ("Tata Motors", "Auto"),
+    "TMCV": ("Tata Motors", "Auto"),        # renamed at the 2025 demerger
     "M&M": ("M&M", "Auto"),
     "BAJAJ-AUTO": ("Bajaj Auto", "Auto"),
     "EICHERMOT": ("Eicher Motors", "Auto"),
