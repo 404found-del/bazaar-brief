@@ -33,7 +33,7 @@ def load_data(sample: bool):
     d = market_data.fetch_day()
 
     # Editorial furniture the data layer has no opinion about.
-    d.setdefault("cta", "The market in 60 seconds, every trading day.")
+    d.setdefault("cta", "Yesterday's market, before today's opens.")
     d["disclaimer"] = story.DISCLAIMER
     d["call"] = build_call(d)
     return d
@@ -50,9 +50,12 @@ def build_call(d):
     return {
         "yesterday": None,
         "today": {
-            "question": f"Nifty tomorrow: above or below {level:,.0f}?",
+            # Posted before the open, so the call resolves at TODAY's close and
+            # gets scored tomorrow morning. A same-day loop beats an overnight
+            # one: people come back to find out whether they were right.
+            "question": f"Nifty at today's close: above or below {level:,.0f}?",
             "a": "ABOVE", "b": "BELOW",
-            "ask": "Comment your call — I score it in tomorrow's post.",
+            "ask": "Comment your call before 9:15 — I score it tomorrow morning.",
         },
         "dm_keyword": "SECTORS",
         "dm_promise": "the full sector table and every Nifty 50 move",

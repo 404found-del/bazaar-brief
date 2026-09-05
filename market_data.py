@@ -18,6 +18,7 @@ sectors" instead of failing when one feed is down.
 from __future__ import annotations
 
 import datetime as dt
+import os
 import sys
 
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
@@ -98,32 +99,110 @@ def _pct(close, prev):
     return (close - prev) / prev * 100.0
 
 
+CLOSE_HOUR_IST = 16         # NSE closes 15:30; give the feed until 16:00.
+HOLIDAY_TOLERANCE = 2       # Sessions we may legitimately be behind, because
+                            # we carry no NSE holiday calendar.
+
+
+def expected_session(now=None, mode="same_day"):
+    """The session this post is supposed to be about.
+
+    "Roughly recent" is not good enough. Yahoo's daily bar for Indian indices
+    lags the close by hours, so a wrap posted at 18:00 IST can silently carry
+    the PREVIOUS session — one day old, well inside any loose tolerance, and
+    completely wrong. The guard has to know which session it is owed.
+
+    mode="same_day"        an evening wrap; wants today's close
+    mode="previous_session" a morning brief; wants the last completed session
+    """
+    now = now or dt.datetime.now(IST)
+    d = now.date()
+    if mode == "same_day":
+        if now.hour < CLOSE_HOUR_IST:
+            d -= dt.timedelta(days=1)      # today's session isn't settled yet
+    else:
+        d -= dt.timedelta(days=1)
+    while d.weekday() >= 5:                # Sat/Sun -> walk back to Friday
+        d -= dt.timedelta(days=1)
+    return d
+
+
+def _sessions_between(a, b):
+    """Weekdays from a to b, exclusive of a. Holidays are invisible to us."""
+    n, d = 0, a
+    while d < b:
+        d += dt.timedelta(days=1)
+        if d.weekday() < 5:
+            n += 1
+    return n
+
+
 def _last_two_closes(hist):
-    """Yahoo occasionally serves a partial bar for the current session, so
-    take the last two settled rows rather than assuming row -1 is today."""
-    closes = [c for c in hist["Close"].tolist() if c == c]     # drop NaN
-    if len(closes) < 2:
-        return None, None
-    return closes[-1], closes[-2]
+    """Return (close, prev, date_of_close).
+
+    The DATE matters as much as the number. Everything downstream labels the
+    post with a session date, and a wrap that says "Friday" over Wednesday's
+    close is worse than no post at all.
+    """
+    h = hist.dropna(subset=["Close"])
+    if len(h) < 2:
+        return None, None, None
+    closes = h["Close"].tolist()
+    asof = h.index[-1]
+    asof = asof.date() if hasattr(asof, "date") else None
+    return closes[-1], closes[-2], asof
+
+
+def check_freshness(asof, mode="same_day", now=None):
+    """Refuse to publish the wrong session.
+
+    Raises rather than warns: a wrong-session post cannot be walked back once
+    it is on the grid, and an account that publishes stale numbers once is not
+    trusted again.
+    """
+    if asof is None:
+        raise DataError("no date on the latest bar — refusing to publish undated numbers")
+
+    want = expected_session(now, mode)
+    if asof > want:
+        raise DataError(f"latest bar {asof} is ahead of the expected session {want} — "
+                        f"clock or feed is wrong")
+
+    behind = _sessions_between(asof, want)
+    if behind == 0:
+        return 0
+    if behind <= HOLIDAY_TOLERANCE:
+        # Could be a market holiday, could be a lagging feed. We cannot tell
+        # them apart without a holiday calendar, so say so loudly and let the
+        # post carry the session date the data actually has.
+        print(f"  ! data is {behind} session(s) behind the expected {want} "
+              f"(market holiday, or a lagging feed)", file=sys.stderr)
+        return behind
+    raise DataError(
+        f"latest bar {asof} is {behind} sessions behind the expected session {want}. "
+        f"The feed is stale — publishing this would misdate the market.")
 
 
 def fetch_indices(yf):
-    out = []
+    out, asof = [], None
     for name, ticker in INDICES:
         try:
             h = yf.Ticker(ticker).history(period="7d")
-            close, prev = _last_two_closes(h)
+            close, prev, bar_date = _last_two_closes(h)
             if close is None:
                 print(f"  ! {name} ({ticker}): no usable history", file=sys.stderr)
                 continue
+            if name == "Nifty 50":
+                asof = bar_date
             out.append({"name": name, "close": round(close, 2),
                         "chg": round(close - prev, 2),
-                        "pct": round(_pct(close, prev), 2)})
+                        "pct": round(_pct(close, prev), 2),
+                        "asof": str(bar_date)})
         except Exception as e:
             print(f"  ! {name} ({ticker}): {type(e).__name__}: {e}", file=sys.stderr)
     if not out or out[0]["name"] != "Nifty 50":
         raise DataError("Nifty 50 is mandatory and could not be fetched")
-    return out
+    return out, asof
 
 
 def fetch_stocks(yf):
@@ -132,20 +211,27 @@ def fetch_stocks(yf):
     symbols = [f"{s}.NS" for s in CONSTITUENTS]
     data = yf.download(symbols, period="7d", group_by="ticker",
                        progress=False, threads=True, auto_adjust=False)
-    rows = []
+    rows, missing = [], []
     for sym, (label, sector) in CONSTITUENTS.items():
         try:
             h = data[f"{sym}.NS"].dropna(subset=["Close"])
-            close, prev = _last_two_closes(h)
+            close, prev, _ = _last_two_closes(h)
             if close is None:
+                missing.append(sym)
                 continue
             rows.append({"name": label, "sector": sector,
                          "pct": round(_pct(close, prev), 2),
                          "close": round(close, 2)})
         except Exception:
-            continue                       # a dropped constituent is not fatal
-    if len(rows) < 20:
-        raise DataError(f"only {len(rows)} of {len(CONSTITUENTS)} stocks returned data")
+            missing.append(sym)            # a dropped constituent is not fatal
+    if missing:
+        # Index membership changes and tickers get renamed after demergers.
+        # Surfaced every run so the list gets maintained instead of silently rotting.
+        print(f"  ! {len(missing)} constituent(s) returned nothing: "
+              f"{', '.join(missing)}", file=sys.stderr)
+    if len(rows) < 40:
+        raise DataError(f"only {len(rows)} of {len(CONSTITUENTS)} stocks returned data — "
+                        f"too thin to describe the market honestly")
     return rows
 
 
@@ -178,13 +264,23 @@ def fetch_day():
         raise DataError("yfinance is not installed (pip install yfinance)")
 
     print("fetching indices…")
-    indices = fetch_indices(yf)
+    indices, asof = fetch_indices(yf)
+
+    # Do this BEFORE anything else is computed. Everything downstream stamps a
+    # session date onto the post, and numbers under the wrong date are worse
+    # than no post at all.
+    mode = os.environ.get("BB_MODE", "previous_session")
+    age = check_freshness(asof, mode)
+    print(f"data as of {asof} ({age} day(s) old) — freshness OK")
+
     print("fetching constituents…")
     stocks = fetch_stocks(yf)
 
     ranked = sorted(stocks, key=lambda r: -r["pct"])
     data = {
-        "kicker": f"Daily wrap · {dt.datetime.now(IST):%a %d %b %Y}",
+        # The kicker names the SESSION, not the day the job happened to run.
+        "kicker": f"Yesterday's close · {asof:%a %d %b %Y}",
+        "asof": str(asof),
         "indices": indices,
         "gainers": [{"name": r["name"], "pct": r["pct"]} for r in ranked[:5]],
         "losers": [{"name": r["name"], "pct": r["pct"]} for r in ranked[-5:]][::-1],

@@ -228,9 +228,10 @@ HASHTAGS = (
 )
 
 DISCLAIMER = (
-    "Data from NSE. Educational only — not investment advice and not a "
-    "recommendation to buy or sell. Not SEBI-registered. Consult a registered "
-    "adviser before investing."
+    "Exchange data via Yahoo Finance; sector moves are equal-weighted averages "
+    "of Nifty 50 constituents, not official index levels. Educational only — "
+    "not investment advice and not a recommendation to buy or sell. "
+    "Not SEBI-registered. Consult a registered adviser before investing."
 )
 
 
@@ -244,8 +245,8 @@ def caption(d, limit=2200):
     n = d["indices"][0]
     c = d.get("call", {}).get("today", {})
     ask = (f"{c.get('question')}\n"
-           f"Comment {c.get('a', 'ABOVE')} or {c.get('b', 'BELOW')} — "
-           f"I score every call in the next day's post."
+           f"Comment {c.get('a', 'ABOVE')} or {c.get('b', 'BELOW')} before the 9:15 open — "
+           f"I score every call tomorrow morning."
            ) if c.get("question") else "What are you watching tomorrow?"
 
     if d.get("flows"):

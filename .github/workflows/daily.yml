@@ -1,0 +1,121 @@
+name: Daily brief
+
+# 02:30 UTC = 08:00 IST, Mon-Fri — before the 9:15 open, using the previous
+# session's fully-settled data. GitHub's scheduler can run a few minutes late
+# under load; harmless here, since nothing depends on the exact minute.
+on:
+  schedule:
+    - cron: '30 2 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build but do not post? ("yes" to hold back)'
+        required: true
+        default: 'yes'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:            # never let two runs publish the same morning
+  group: daily-brief
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Work out the real Pages URL
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Install Inter
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-inter || true
+          fc-list | grep -qi "Inter" || { echo "::error::Inter not available"; exit 1; }
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --quiet --upgrade pip
+          pip install --quiet -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      # market_data refuses to proceed if the session it gets back isn't the
+      # one a morning brief is owed, so a stale feed fails here rather than
+      # putting the wrong day's market on the grid.
+      - name: Build the brief
+        env:
+          BB_MODE: previous_session
+          PAGES_BASE: ${{ steps.pages.outputs.base_url }}
+        run: |
+          if [ -z "$PAGES_BASE" ]; then
+            echo "::error::Pages base URL is empty — is Pages enabled with source 'GitHub Actions'?"
+            exit 1
+          fi
+          PAGES_BASE="${PAGES_BASE/#http:/https:}"
+          echo "serving slides from $PAGES_BASE"
+          python run_daily.py --base-url "$PAGES_BASE"
+          echo "--- caption ---"
+          cat caption.txt
+
+      - name: Keep a copy of today's post
+        uses: actions/upload-artifact@v4
+        with:
+          name: brief-${{ github.run_number }}
+          path: |
+            docs/slides/**
+            caption.txt
+          retention-days: 30
+
+      - name: Package the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Wait for the slides to actually serve
+        run: |
+          URL=$(python -c "import json;print(json.load(open('urls.json'))[0])")
+          echo "polling $URL"
+          for i in $(seq 1 30); do
+            RESP=$(curl -sL -o /dev/null \
+              -w '%{http_code} %{content_type} %{url_effective}' "$URL" || echo "000 - -")
+            set -- $RESP
+            CODE=$1; TYPE=$2; FINAL=$3
+            if [ "$CODE" = "200" ]; then
+              case "$TYPE" in
+                image/*) echo "live after ~$((i*10))s"; exit 0 ;;
+                *) echo "::error::served $TYPE, not an image. Landed on: $FINAL"; exit 1 ;;
+              esac
+            fi
+            echo "  attempt $i: HTTP $CODE -> $FINAL"
+            sleep 10
+          done
+          echo "::error::slides never became reachable. Last URL: $FINAL"
+          exit 1
+
+      - name: Post to Instagram
+        if: ${{ github.event_name == 'schedule' || github.event.inputs.dry_run != 'yes' }}
+        env:
+          META_LONG_LIVED_TOKEN: ${{ secrets.META_LONG_LIVED_TOKEN }}
+        run: python publish.py --urls urls.json --caption caption.txt
+
+      - name: Dry run only (manual runs default to this)
+        if: ${{ github.event_name != 'schedule' && github.event.inputs.dry_run == 'yes' }}
+        env:
+          META_LONG_LIVED_TOKEN: ${{ secrets.META_LONG_LIVED_TOKEN }}
+        run: python publish.py --urls urls.json --caption caption.txt --dry-run
