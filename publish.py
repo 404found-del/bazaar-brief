@@ -151,6 +151,30 @@ def publish_container(ig_id, token, creation_id):
                 creation_id=creation_id, access_token=token)["id"]
 
 
+def publish_reel(ig_id, token, video_url, caption, cover_url=None, dry_run=False):
+    """Reels are one container, not many — but Meta has to transcode the video,
+    which takes far longer than fetching a JPEG. Hence the longer poll."""
+    if len(caption) > MAX_CAPTION:
+        raise PublishError(f"caption is {len(caption)} chars, limit is {MAX_CAPTION}")
+
+    params = {"media_type": "REELS", "video_url": video_url,
+              "caption": caption, "access_token": token}
+    if cover_url:
+        params["cover_url"] = cover_url
+
+    print("→ creating reel container")
+    cid = post(f"/{ig_id}/media", **params)["id"]
+    print(f"   {cid} — waiting for transcode")
+    wait_ready(cid, token, tries=60, delay=5)
+
+    if dry_run:
+        print("→ dry run: reel container ready, NOT published")
+        return None
+    media_id = publish_container(ig_id, token, cid)
+    print(f"✓ reel published, media id {media_id}")
+    return media_id
+
+
 def publish_carousel(ig_id, token, image_urls, caption, dry_run=False):
     if not CAROUSEL_MIN <= len(image_urls) <= CAROUSEL_MAX:
         raise PublishError(f"a carousel needs {CAROUSEL_MIN}-{CAROUSEL_MAX} images, "
@@ -220,6 +244,8 @@ def main():
     ap.add_argument("--check", action="store_true", help="verify credentials and exit")
     ap.add_argument("--refresh", action="store_true", help="refresh the long-lived token")
     ap.add_argument("--urls", help="JSON file: a list of public image URLs, in slide order")
+    ap.add_argument("--reel", help="public URL of an mp4 to publish as a Reel")
+    ap.add_argument("--cover", help="public URL of the Reel's cover image")
     ap.add_argument("--caption", help="text file holding the caption")
     ap.add_argument("--dry-run", action="store_true",
                     help="build containers but stop short of publishing")
@@ -239,13 +265,16 @@ def main():
                   "(it replaces the old one; the old one keeps working until it expires).")
             print(new)
             return
-        if not a.urls or not a.caption:
-            ap.error("--urls and --caption are required to publish")
+        if not a.caption or not (a.urls or a.reel):
+            ap.error("--caption plus one of --urls / --reel is required to publish")
 
         ig_id, _ = resolve_user_id(token, configured)
-        urls = json.load(open(a.urls, encoding="utf-8"))
         caption = open(a.caption, encoding="utf-8").read().strip()
-        publish_carousel(ig_id, token, urls, caption, dry_run=a.dry_run)
+        if a.reel:
+            publish_reel(ig_id, token, a.reel, caption, a.cover, dry_run=a.dry_run)
+        else:
+            urls = json.load(open(a.urls, encoding="utf-8"))
+            publish_carousel(ig_id, token, urls, caption, dry_run=a.dry_run)
 
     except PublishError as e:
         print(f"✗ {e}", file=sys.stderr)

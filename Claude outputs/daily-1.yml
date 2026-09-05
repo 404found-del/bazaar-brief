@@ -62,6 +62,7 @@ jobs:
           # Absent -> the Reel renders silent. Present -> Indian-English narration.
           AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
           AZURE_SPEECH_REGION: ${{ secrets.AZURE_SPEECH_REGION }}
+          AZURE_VOICE: ${{ vars.AZURE_VOICE }}
         run: |
           if [ -z "$PAGES_BASE" ]; then
             echo "::error::Pages base URL is empty — is Pages enabled with source 'GitHub Actions'?"

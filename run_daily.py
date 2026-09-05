@@ -18,6 +18,8 @@ import sys
 
 import story
 from build_carousel import render
+from build_reel import render as render_reel
+import narrate
 
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 SLIDE_COUNT = 6
@@ -54,6 +56,7 @@ def build_call(d):
             # gets scored tomorrow morning. A same-day loop beats an overnight
             # one: people come back to find out whether they were right.
             "question": f"Nifty at today's close: above or below {level:,.0f}?",
+            "level": level,                 # numeric, for the spoken version
             "a": "ABOVE", "b": "BELOW",
             "ask": "Comment your call before 9:15 — I score it tomorrow morning.",
         },
@@ -89,6 +92,31 @@ def main():
     base = a.base_url.rstrip("/")
     urls = [f"{base}/slides/{stamp}/{os.path.basename(p)}" for p in paths]
 
+    # The Reel is the discovery vehicle; the carousel is what converts the
+    # people it brings. Same data, same day, different job.
+    reel_path = os.path.join(outdir, "reel.mp4")
+    spec = spec_path_for(outdir)
+
+    # Narration first: the scene timings come from how long each line actually
+    # takes to say. No voice configured is a supported outcome — the Reel then
+    # renders silent on its default timings.
+    clips = narrate.narrate(data, os.path.join(outdir, "vo"))
+    if clips:
+        timings = narrate.scene_timings(clips)
+        total = max(b for _, _, b in timings)
+        silent = os.path.join(outdir, "_silent.mp4")
+        render_reel(spec, silent, scenes=timings)
+        track = os.path.join(outdir, "vo", "track.wav")
+        narrate.mix_track(clips, timings, track, total)
+        narrate.mux(silent, track, reel_path)
+        os.remove(silent)
+    else:
+        print("no voice configured — rendering a silent reel")
+        render_reel(spec, reel_path)
+    reel_url = f"{base}/slides/{stamp}/reel.mp4"
+    with open("reel_url.txt", "w", encoding="utf-8") as f:
+        f.write(reel_url)
+
     with open("urls.json", "w", encoding="utf-8") as f:
         json.dump(urls, f, indent=2)
     cap = story.caption(data)
@@ -96,9 +124,14 @@ def main():
         f.write(cap)
 
     print(f"slides : {len(paths)} -> {outdir}")
+    print(f"reel   : {reel_url}  ({os.path.getsize(reel_path)/1e6:.2f} MB)")
     print(f"caption: {len(cap)} chars")
     for u in urls:
         print(f"  {u}")
+
+
+def spec_path_for(outdir):
+    return os.path.join(outdir, "spec.json")
 
 
 def render_slides(data, outdir):

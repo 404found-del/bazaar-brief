@@ -378,7 +378,7 @@ def slide6(d):
 
 def build_html(d):
     slides = slide1(d) + slide2(d) + slide3(d) + slide4(d) + slide5(d) + slide6(d)
-    return f"<style>{CSS}</style>{slides}"
+    return f"<meta charset='utf-8'><style>{CSS}</style>{slides}"
 
 
 def render(spec_path, outdir):
