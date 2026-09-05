@@ -132,11 +132,20 @@ jobs:
             --reel "$(cat reel_url.txt)" \
             --cover "$(python -c "import json;print(json.load(open('urls.json'))[0])")"
 
+      # Both containers are built and polled to FINISHED, then thrown away.
+      # The Reel matters most here: Meta has to fetch the mp4 off the domain
+      # and transcode it, which is the slowest step in the pipeline and the
+      # one most likely to fail. Exercising it on a dry run means the first
+      # live post is not also the first time that code has ever run.
       - name: Dry run only (manual runs default to this)
         if: ${{ github.event_name != 'schedule' && github.event.inputs.dry_run == 'yes' }}
         env:
           META_LONG_LIVED_TOKEN: ${{ secrets.META_LONG_LIVED_TOKEN }}
-        run: python publish.py --urls urls.json --caption caption.txt --dry-run
+        run: |
+          python publish.py --urls urls.json --caption caption.txt --dry-run
+          python publish.py --caption caption.txt --dry-run \
+            --reel "$(cat reel_url.txt)" \
+            --cover "$(python -c "import json;print(json.load(open('urls.json'))[0])")"
 
   # Instagram copies each image when it builds the container, and serves its
   # own copy from then on — the source URL is never fetched again. So once the
