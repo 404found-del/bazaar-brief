@@ -22,6 +22,7 @@ import shutil
 import subprocess
 import sys
 import wave
+from xml.sax.saxutils import escape
 
 from num2words import num2words
 
@@ -126,16 +127,29 @@ class AzureIndian:
     def __init__(self, voice=None):
         # Aarav — chosen by ear over Neerja/Prabhat/Ananya on a real script.
         # Overridable without a code change via AZURE_VOICE.
-        self.voice = voice or os.environ.get("AZURE_VOICE", "en-IN-AaravNeural")
-        self.key = os.environ.get("AZURE_SPEECH_KEY")
-        self.region = os.environ.get("AZURE_SPEECH_REGION", "centralindia")
+        # os.environ.get(k, default) returns "" when the variable is SET BUT
+        # EMPTY -- which is exactly what a GitHub repo variable that was never
+        # created evaluates to. `or` is the only form that falls back in both
+        # the unset and the set-but-empty case.
+        self.voice = voice or os.environ.get("AZURE_VOICE") or "en-IN-AaravNeural"
+        self.key = (os.environ.get("AZURE_SPEECH_KEY") or "").strip()
+        self.region = (os.environ.get("AZURE_SPEECH_REGION") or "").strip() or "centralindia"
         if not self.key:
             raise RuntimeError("AZURE_SPEECH_KEY is not set")
 
     def say(self, text, out_wav):
+        import urllib.error
         import urllib.request
-        ssml = (f"<speak version='1.0' xml:lang='en-IN'><voice name='{self.voice}'>"
-                f"<prosody rate='+4%'>{text}</prosody></voice></speak>")
+        # The xmlns is NOT optional. Azure parses this as a namespaced SSML
+        # document and rejects it with a bodiless HTTP 400 without it -- which
+        # reads exactly like a bad key or an unavailable voice, and isn't.
+        # escape() matters too: the day M&M tops the movers list, unescaped
+        # text makes this malformed and you get the same opaque 400.
+        ssml = ("<speak version='1.0' "
+                "xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-IN'>"
+                f"<voice name='{self.voice}'>"
+                f"<prosody rate='+4%'>{escape(text)}</prosody>"
+                "</voice></speak>")
         req = urllib.request.Request(
             f"https://{self.region}.tts.speech.microsoft.com/cognitiveservices/v1",
             data=ssml.encode("utf-8"),
@@ -144,14 +158,23 @@ class AzureIndian:
                      "X-Microsoft-OutputFormat": "riff-24khz-16bit-mono-pcm",
                      "User-Agent": "bazaar-brief"},
             method="POST")
-        with urllib.request.urlopen(req, timeout=45) as r, open(out_wav, "wb") as f:
-            f.write(r.read())
+        # Azure explains a 400 in the response body. urllib throws that body
+        # away unless you read it off the exception, which is how a rejected
+        # voice name or a wrong region ends up looking like a generic failure.
+        try:
+            with urllib.request.urlopen(req, timeout=45) as r, open(out_wav, "wb") as f:
+                f.write(r.read())
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", "replace")[:300]
+            raise RuntimeError(
+                f"Azure TTS {e.code} for voice '{self.voice}' in "
+                f"region '{self.region}': {body or e.reason}") from None
         return out_wav
 
 
 def pick_voice():
     """Indian voice when it's configured; the local one when it isn't."""
-    if os.environ.get("AZURE_SPEECH_KEY"):
+    if (os.environ.get("AZURE_SPEECH_KEY") or "").strip():
         return AzureIndian()
     model = os.environ.get("PIPER_MODEL")
     if model and os.path.exists(model):
