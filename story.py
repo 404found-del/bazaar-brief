@@ -235,7 +235,7 @@ DISCLAIMER = (
 )
 
 
-def caption(d, limit=2200):
+def caption(d, limit=2200, reel=False):
     """Instagram caption.
 
     The first line is doing almost all the work — it is the only part visible
@@ -262,7 +262,8 @@ def caption(d, limit=2200):
         d["deck"],
         numbers,
         ask,
-        "Swipe for the sector map and the full mover list.",
+        ("The sector map and the full mover list are in today's carousel."
+         if reel else "Swipe for the sector map and the full mover list."),
         DISCLAIMER,
         HASHTAGS,
     ])

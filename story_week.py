@@ -193,7 +193,7 @@ def build_call(d):
 
 # --------------------------------------------------------------- caption
 
-def caption(d, limit=2200):
+def caption(d, limit=2200, reel=False):
     n, b = _nifty(d), d.get("breadth") or {}
     c = d.get("call", {}).get("today", {})
     up, down = _streaks(d)
@@ -214,7 +214,10 @@ def caption(d, limit=2200):
 
     parts.append(f"{c.get('question')}\n{c.get('ask')}" if c.get("question")
                  else "What are you watching next week?")
-    parts += ["Swipe for the week's sector map and every big move.",
+    # "Swipe" is a carousel instruction. On a Reel there is nothing to swipe,
+    # and the first post shipped telling viewers to do exactly that.
+    parts += [("The week's sector map and every big move are in the carousel."
+               if reel else "Swipe for the week's sector map and every big move."),
               DISCLAIMER, HASHTAGS]
 
     body = "\n\n".join(parts)

@@ -86,14 +86,21 @@ jobs:
             caption.txt
           retention-days: 30
 
+      # Named per attempt on purpose. Re-running a failed run keeps the
+      # first attempt's artifacts, so a second upload under the default name
+      # leaves deploy-pages with two candidates and it refuses to pick --
+      # which is exactly what broke the first live weekly run.
       - name: Package the site
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs
+          name: github-pages-${{ github.run_attempt }}
 
       - name: Deploy to Pages
         id: deploy
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
 
       - name: Wait for the slides to actually serve
         run: |
@@ -127,7 +134,7 @@ jobs:
         env:
           META_LONG_LIVED_TOKEN: ${{ secrets.META_LONG_LIVED_TOKEN }}
         run: |
-          python publish.py --caption caption.txt \
+          python publish.py --caption caption_reel.txt \
             --reel "$(cat reel_url.txt)" \
             --cover "$(python -c "import json;print(json.load(open('urls.json'))[0])")"
 

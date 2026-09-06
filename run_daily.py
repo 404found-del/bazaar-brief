@@ -105,6 +105,10 @@ def main():
     cap = story.caption(data)
     with open("caption.txt", "w", encoding="utf-8") as f:
         f.write(cap)
+    # The Reel needs its own: the carousel caption ends with a swipe
+    # instruction, and a Reel has nothing to swipe.
+    with open("caption_reel.txt", "w", encoding="utf-8") as f:
+        f.write(story.caption(data, reel=True))
 
     print(f"slides : {len(paths)} -> {outdir}")
     print(f"reel   : {reel_url}  ({os.path.getsize(reel_path)/1e6:.2f} MB)")
