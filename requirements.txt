@@ -1,3 +1,6 @@
 playwright>=1.44
 yfinance>=0.2.40
 num2words>=0.5.13
+# Bundles a static ffmpeg. The last-resort source in build_reel.ffmpeg_bin,
+# after two separate platform-specific failures to find one otherwise.
+imageio-ffmpeg>=0.4.9

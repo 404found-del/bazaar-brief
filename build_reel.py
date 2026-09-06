@@ -133,30 +133,47 @@ window.frame = frame;
 
 
 def ffmpeg_bin():
-    """Find ffmpeg without depending on the runner image having it.
+    """Find ffmpeg, or say exactly how to get one.
 
-    GitHub's ubuntu-24.04 image does not ship ffmpeg, but `playwright install`
-    downloads one as a side effect — so use that rather than an apt step the
-    workflow might lose. One less thing that can silently go missing.
+    This has now failed on two platforms for two different reasons, so it
+    tries three sources in descending order of how much they can be trusted:
+
+    1. PATH — a real system install, if there is one.
+    2. Playwright's cache. `playwright install` downloads an ffmpeg as a side
+       effect, which is free and already present in CI. It is also the least
+       dependable: the directory differs per OS, and so does the FILE NAME
+       (ffmpeg-linux, ffmpeg-mac, ffmpeg-win64.exe). Match on a glob rather
+       than a list of names — the list is what broke on Windows.
+    3. imageio-ffmpeg, a pip package that bundles a static binary. Same name,
+       same call, every OS. This is the one that ends the problem.
     """
     exe = shutil.which("ffmpeg")
     if exe:
         return exe
-    # Playwright caches its ffmpeg in a different place on every OS, and the
-    # Linux path alone means a Windows run silently has no ffmpeg.
+
     roots = [os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or "",
              os.path.expanduser("~/.cache/ms-playwright"),                # Linux
              os.path.expanduser("~/Library/Caches/ms-playwright"),        # macOS
              os.path.join(os.environ.get("LOCALAPPDATA") or "", "ms-playwright")]
+    searched = []
     for root in filter(None, roots):
+        searched.append(root)
         for d in sorted(glob.glob(os.path.join(root, "ffmpeg-*")), reverse=True):
-            for name in ("ffmpeg-linux", "ffmpeg", "ffmpeg.exe"):
-                p = os.path.join(d, name)
-                if os.path.isfile(p) and os.access(p, os.X_OK):
-                    return p
+            for cand in sorted(glob.glob(os.path.join(d, "ffmpeg*"))):
+                if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                    return cand
+
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        pass
+
     raise RuntimeError(
-        "ffmpeg not found on PATH or in the Playwright cache. "
-        "Install it, or run `python -m playwright install chromium` first.")
+        "ffmpeg not found. The fix, on any OS:\n"
+        "    pip install imageio-ffmpeg\n"
+        "(or install ffmpeg system-wide and put it on PATH).\n"
+        "Looked on PATH and under: " + ", ".join(searched or ["(nothing)"]))
 
 
 def sign(v):
