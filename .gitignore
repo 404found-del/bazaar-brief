@@ -12,3 +12,4 @@ _carousel.html
 *.png
 !brand/avatar_*.png
 out_local/
+reel_url.txt
