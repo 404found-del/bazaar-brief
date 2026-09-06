@@ -132,48 +132,76 @@ window.frame = frame;
 """
 
 
-def ffmpeg_bin():
-    """Find ffmpeg, or say exactly how to get one.
+_FFMPEG = None
 
-    This has now failed on two platforms for two different reasons, so it
-    tries three sources in descending order of how much they can be trusted:
 
-    1. PATH — a real system install, if there is one.
-    2. Playwright's cache. `playwright install` downloads an ffmpeg as a side
-       effect, which is free and already present in CI. It is also the least
-       dependable: the directory differs per OS, and so does the FILE NAME
-       (ffmpeg-linux, ffmpeg-mac, ffmpeg-win64.exe). Match on a glob rather
-       than a list of names — the list is what broke on Windows.
-    3. imageio-ffmpeg, a pip package that bundles a static binary. Same name,
-       same call, every OS. This is the one that ends the problem.
+def _can_encode(exe):
+    """Does this binary actually do the job we need?
+
+    Playwright ships an ffmpeg built only for recording webm. It exists, it
+    runs, and it rejects -movflags and libx264 — so 'a file named ffmpeg is
+    present' is not the question worth asking. This is.
     """
+    try:
+        r = subprocess.run([exe, "-hide_banner", "-encoders"],
+                           capture_output=True, text=True, timeout=30)
+        return "libx264" in (r.stdout or "")
+    except Exception:
+        return False
+
+
+def ffmpeg_bin():
+    """Return an ffmpeg that can encode H.264, or explain how to get one.
+
+    Four separate failures got this here: missing from the CI image, missing
+    from a Linux-only cache path, present on Windows under an unmatched name,
+    and finally present, matched, and incapable. Each earlier fix answered
+    'where is it' when the real question was 'can it do the work'.
+
+    Candidates are checked, not assumed, and the first capable one wins.
+    """
+    global _FFMPEG
+    if _FFMPEG:
+        return _FFMPEG
+
+    tried = []
+
+    def take(exe, note):
+        tried.append(f"{note}: {exe}")
+        return _can_encode(exe)
+
     exe = shutil.which("ffmpeg")
-    if exe:
+    if exe and take(exe, "PATH"):
+        _FFMPEG = exe
         return exe
 
-    roots = [os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or "",
-             os.path.expanduser("~/.cache/ms-playwright"),                # Linux
-             os.path.expanduser("~/Library/Caches/ms-playwright"),        # macOS
-             os.path.join(os.environ.get("LOCALAPPDATA") or "", "ms-playwright")]
-    searched = []
-    for root in filter(None, roots):
-        searched.append(root)
-        for d in sorted(glob.glob(os.path.join(root, "ffmpeg-*")), reverse=True):
-            for cand in sorted(glob.glob(os.path.join(d, "ffmpeg*"))):
-                if os.path.isfile(cand) and os.access(cand, os.X_OK):
-                    return cand
-
+    # A full static build, same call on every OS. The dependable one.
     try:
         import imageio_ffmpeg
-        return imageio_ffmpeg.get_ffmpeg_exe()
-    except Exception:
-        pass
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        if take(exe, "imageio-ffmpeg"):
+            _FFMPEG = exe
+            return exe
+    except Exception as e:
+        tried.append(f"imageio-ffmpeg: unavailable ({type(e).__name__})")
+
+    # Last, and expected to fail the capability check on most platforms.
+    roots = [os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or "",
+             os.path.expanduser("~/.cache/ms-playwright"),
+             os.path.expanduser("~/Library/Caches/ms-playwright"),
+             os.path.join(os.environ.get("LOCALAPPDATA") or "", "ms-playwright")]
+    for root in filter(None, roots):
+        for d in sorted(glob.glob(os.path.join(root, "ffmpeg-*")), reverse=True):
+            for cand in sorted(glob.glob(os.path.join(d, "ffmpeg*"))):
+                if os.path.isfile(cand) and take(cand, "playwright cache"):
+                    _FFMPEG = cand
+                    return cand
 
     raise RuntimeError(
-        "ffmpeg not found. The fix, on any OS:\n"
+        "No ffmpeg that can encode H.264 was found. The fix, on any OS:\n"
         "    pip install imageio-ffmpeg\n"
-        "(or install ffmpeg system-wide and put it on PATH).\n"
-        "Looked on PATH and under: " + ", ".join(searched or ["(nothing)"]))
+        "(or install a full ffmpeg and put it on PATH).\n"
+        "Checked:\n  " + "\n  ".join(tried or ["nothing"]))
 
 
 def sign(v):
