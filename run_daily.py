@@ -35,30 +35,61 @@ def load_data(sample: bool):
     d = market_data.fetch_day()
 
     # Editorial furniture the data layer has no opinion about.
-    d.setdefault("cta", "Yesterday's market, before today's opens.")
+    d.setdefault("cta", "Yesterday's market, before today's opens."
+                 if call_deadline() == "before the 9:15 open"
+                 else "Yesterday's close, and the call still open.")
     d["disclaimer"] = story.DISCLAIMER
     d["call"] = build_call(d)
+    d["call_lede"] = "Your call for today's close"
     return d
 
 
-def build_call(d):
-    """Tomorrow's prediction, pinned to a round number near today's close.
+OPEN_IST = (9, 15)
+CLOSE_IST = (15, 30)
+
+
+def call_deadline(now=None):
+    """How to phrase the call's deadline, given when the post ACTUALLY lands.
+
+    The brief is built for 08:00 IST, but GitHub's scheduler is best-effort:
+    it delays runs under load and drops them outright. One was dropped
+    entirely on the first scheduled weekday. So the copy cannot assume the
+    hour it was written for -- a post landing at noon must not tell people to
+    comment "before 9:15", an instruction that expired three hours earlier.
+
+    Returns None after the close, which the caller treats as "do not post":
+    a morning brief asking about a close that has already happened is worse
+    than no post at all.
+    """
+    now = now or dt.datetime.now(IST)
+    hm = (now.hour, now.minute)
+    if hm < OPEN_IST:
+        return "before the 9:15 open"
+    if hm < CLOSE_IST:
+        return "before the 3:30 close"
+    return None
+
+
+def build_call(d, now=None):
+    """Today's prediction, pinned to a round number near the last close.
 
     Yesterday's result is filled in by the comment-scoring step once that
     exists; until then the slide runs without the scoreboard strip.
     """
     close = d["indices"][0]["close"]
     level = round(close / 50) * 50            # nearest 50 reads as a real level
+    deadline = call_deadline(now) or "before the 3:30 close"
     return {
         "yesterday": None,
         "today": {
-            # Posted before the open, so the call resolves at TODAY's close and
-            # gets scored tomorrow morning. A same-day loop beats an overnight
-            # one: people come back to find out whether they were right.
+            # The call resolves at TODAY's close and gets scored tomorrow
+            # morning. A same-day loop beats an overnight one: people come
+            # back to find out whether they were right.
             "question": f"Nifty at today's close: above or below {level:,.0f}?",
             "level": level,                 # numeric, for the spoken version
             "a": "ABOVE", "b": "BELOW",
-            "ask": "Comment your call before 9:15 — I score it tomorrow morning.",
+            "deadline": deadline,           # one source of truth for the phrasing
+            "ask": f"Comment your call {deadline} — I score it tomorrow morning.",
         },
         # Switched on once ManyChat exists to answer it. Until then the
         # slide simply doesn't make the offer.
@@ -77,6 +108,15 @@ def main():
                     help="directory GitHub Pages serves (default: docs)")
     a = ap.parse_args()
     load_local_env()
+
+    # Refuse rather than post something incoherent. Same reasoning as the
+    # freshness guard: a brief that lands after the close is asking about a
+    # session that already settled, and that cannot be walked back once it is
+    # on the grid.
+    if not a.sample and call_deadline() is None:
+        sys.exit("refusing to post a morning brief after the 15:30 close — "
+                 "today's session has already settled, so the call is moot. "
+                 "Let tomorrow's run handle it.")
 
     today = dt.datetime.now(IST)
     stamp = today.strftime("%Y-%m-%d")

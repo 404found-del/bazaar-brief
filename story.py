@@ -245,7 +245,8 @@ def caption(d, limit=2200, reel=False):
     n = d["indices"][0]
     c = d.get("call", {}).get("today", {})
     ask = (f"{c.get('question')}\n"
-           f"Comment {c.get('a', 'ABOVE')} or {c.get('b', 'BELOW')} before the 9:15 open — "
+           f"Comment {c.get('a', 'ABOVE')} or {c.get('b', 'BELOW')} "
+           f"{c.get('deadline', 'before the 3:30 close')} — "
            f"I score every call tomorrow morning."
            ) if c.get("question") else "What are you watching tomorrow?"
 

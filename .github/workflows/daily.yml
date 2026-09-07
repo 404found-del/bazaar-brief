@@ -5,7 +5,7 @@ name: Daily brief
 # under load; harmless here, since nothing depends on the exact minute.
 on:
   schedule:
-    - cron: '30 2 * * 1-5'
+    - cron: '37 2 * * 1-5'
   workflow_dispatch:
     inputs:
       dry_run:
