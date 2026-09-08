@@ -8,7 +8,7 @@ the state, a decision, or a gotcha below. There is no automation enforcing it �
 a CI check would either cry wolf on every push or be a warning nobody sees, and
 the doc is short enough that keeping it honest is cheaper than policing it.
 
-Last updated: 2026-09-08, after a late manual run exposed the partial-bar bug.
+Last updated: 2026-09-08. Build pipeline fully working; Meta API access is the blocker.
 
 ---
 
@@ -198,10 +198,15 @@ or the day M&M tops the movers list you get the same opaque 400.
 **`os.environ.get(k, default)` returns `""` for a set-but-empty variable**, which
 is what an uncreated GitHub repo variable evaluates to. Use `or`.
 
-**"API access blocked" (OAuthException code 200) is app-level, not token-level.**
-An invalid token says "Error validating access token". Check the App Dashboard
-banner and app mode before touching the credential. Happened once; resolved in
-the dashboard.
+**"API access blocked" (OAuthException code 200) is app-level, not token-level,
+and it RECURS.** An invalid token says "Error validating access token"; this is
+not that. Seen 2026-09-06, cleared in the dashboard, and back by 2026-09-08 —
+so whatever clears it is a temporary unblock, not a fix. The Access Token
+Debugger showed the token valid with every scope while calls were blocked, so
+do not chase the credential. Check the App Dashboard banner, the app mode
+(Development vs Live), and any outstanding required action such as Data Use
+Checkup or business verification, which are deadline-driven and would explain
+the recurrence.
 
 **Re-running a failed Actions run keeps the first attempt's artifacts**, so a
 second upload under the same name leaves `deploy-pages` with two candidates and
@@ -248,6 +253,13 @@ appear, the daily was unlucky and the backstops are enough. If none appear in
 an hour, scheduling does not work in this repo and the trigger has to move off
 GitHub — most likely an external cron calling the `workflow_dispatch` API,
 which costs a PAT that itself expires.
+
+**Meta access is the live blocker.** As of 2026-09-08 the build pipeline works
+end to end — data, angle, narration, slides, Reel, Pages — and only publishing
+fails, on "API access blocked". Nothing in this repo can fix that. The useful
+discriminator when it happens: run `python publish.py --check` locally. Both
+failing means app-level; local working while CI fails means the
+META_LONG_LIVED_TOKEN secret has drifted from the token in `.env`.
 
 **A missed day is still silent.** Nothing alarms when a run simply never
 happens. Worth a check that notices the account did not post.
