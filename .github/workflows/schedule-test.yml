@@ -9,13 +9,15 @@ name: Schedule heartbeat
 # under load), or `schedule` does not fire in this repo at all.
 #
 # Guessing between those has already cost two days of posts. This settles it:
-# it runs every 15 minutes and does nothing but print the time. If runs with
-# a "schedule" trigger appear within an hour, the scheduler works and the
-# daily was unlucky. If none appear, scheduling is broken here and we stop
-# relying on it.
+# it runs every 5 minutes -- GitHub's floor -- and does nothing but print the
+# time. Sample size is the whole point: two missed dailies could be bad luck,
+# but ~100 missed heartbeats in a day could not be. If runs with a "schedule"
+# trigger appear, the scheduler works here and the daily was unlucky. If none
+# do, scheduling is broken for this repo and the trigger has to come from
+# outside GitHub.
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/5 * * * *'      # 5 min is GitHub's floor; fastest evidence available
   workflow_dispatch:
 
 permissions: {}
