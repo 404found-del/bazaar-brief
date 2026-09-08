@@ -136,14 +136,34 @@ def _sessions_between(a, b):
     return n
 
 
-def _last_two_closes(hist):
+def settled_only(h, not_after):
+    """Drop bars for sessions that have not finished.
+
+    Yahoo publishes a PARTIAL bar for a session in progress. Run this job at
+    08:00 IST and there is no bar for today, so nothing notices. Run it at
+    12:37 -- which is what happens whenever the schedule is late -- and the
+    feed carries a half-finished bar dated today. Two ways that hurts: the
+    freshness guard sees a session from the future and refuses outright, and
+    without the guard we would publish an intraday number as "the close".
+
+    So the brief always reports the last SETTLED session, at any hour.
+    """
+    if not_after is None or h is None or len(h) == 0:
+        return h
+    try:
+        return h[h.index.date <= not_after]
+    except Exception:                     # index without dates: leave it alone
+        return h
+
+
+def _last_two_closes(hist, not_after=None):
     """Return (close, prev, date_of_close).
 
     The DATE matters as much as the number. Everything downstream labels the
     post with a session date, and a wrap that says "Friday" over Wednesday's
     close is worse than no post at all.
     """
-    h = hist.dropna(subset=["Close"])
+    h = settled_only(hist.dropna(subset=["Close"]), not_after)
     if len(h) < 2:
         return None, None, None
     closes = h["Close"].tolist()
@@ -182,12 +202,12 @@ def check_freshness(asof, mode="same_day", now=None):
         f"The feed is stale — publishing this would misdate the market.")
 
 
-def fetch_indices(yf):
+def fetch_indices(yf, not_after=None):
     out, asof = [], None
     for name, ticker in INDICES:
         try:
             h = yf.Ticker(ticker).history(period="7d")
-            close, prev, bar_date = _last_two_closes(h)
+            close, prev, bar_date = _last_two_closes(h, not_after)
             if close is None:
                 print(f"  ! {name} ({ticker}): no usable history", file=sys.stderr)
                 continue
@@ -204,7 +224,7 @@ def fetch_indices(yf):
     return out, asof
 
 
-def fetch_stocks(yf):
+def fetch_stocks(yf, not_after=None):
     """One batched download beats 50 sequential requests, and Yahoo
     rate-limits the latter."""
     symbols = [f"{s}.NS" for s in CONSTITUENTS]
@@ -214,7 +234,7 @@ def fetch_stocks(yf):
     for sym, (label, sector) in CONSTITUENTS.items():
         try:
             h = data[f"{sym}.NS"].dropna(subset=["Close"])
-            close, prev, _ = _last_two_closes(h)
+            close, prev, _ = _last_two_closes(h, not_after)
             if close is None:
                 missing.append(sym)
                 continue
@@ -262,18 +282,22 @@ def fetch_day():
     except ImportError:
         raise DataError("yfinance is not installed (pip install yfinance)")
 
-    print("fetching indices…")
-    indices, asof = fetch_indices(yf)
-
-    # Do this BEFORE anything else is computed. Everything downstream stamps a
-    # session date onto the post, and numbers under the wrong date are worse
-    # than no post at all.
+    # Work out which session is owed BEFORE fetching, so anything later than
+    # it -- a partial bar for a session still in progress -- is dropped rather
+    # than mistaken for a close.
     mode = os.environ.get("BB_MODE", "previous_session")
+    want = expected_session(mode=mode)
+
+    print("fetching indices…")
+    indices, asof = fetch_indices(yf, not_after=want)
+
+    # Everything downstream stamps a session date onto the post, and numbers
+    # under the wrong date are worse than no post at all.
     age = check_freshness(asof, mode)
     print(f"data as of {asof} ({age} day(s) old) — freshness OK")
 
     print("fetching constituents…")
-    stocks = fetch_stocks(yf)
+    stocks = fetch_stocks(yf, not_after=want)
 
     ranked = sorted(stocks, key=lambda r: -r["pct"])
     data = {
@@ -309,9 +333,14 @@ MIN_WEEK_SESSIONS = 2       # a holiday-shortened week is still a week
 WEEK_PERIOD = "1mo"         # needs the session before Monday for the baseline
 
 
-def _series(hist):
-    """[(date, close)] ascending, NaNs dropped. Plain Python from here on."""
-    h = hist.dropna(subset=["Close"])
+def _series(hist, not_after=None):
+    """[(date, close)] ascending, NaNs dropped. Plain Python from here on.
+
+    `not_after` drops an unsettled bar, same reason as settled_only: a
+    partial bar dated today would otherwise become the week's end and shift
+    the whole window.
+    """
+    h = settled_only(hist.dropna(subset=["Close"]), not_after)
     out = []
     for idx, close in zip(h.index, h["Close"].tolist()):
         d = idx.date() if hasattr(idx, "date") else None
@@ -356,11 +385,11 @@ def week_move(series, monday, friday):
             "sessions": len(inside)}
 
 
-def fetch_indices_week(yf, monday=None):
+def fetch_indices_week(yf, monday=None, not_after=None):
     out, asof = [], None
     for name, ticker in INDICES:
         try:
-            s = _series(yf.Ticker(ticker).history(period=WEEK_PERIOD))
+            s = _series(yf.Ticker(ticker).history(period=WEEK_PERIOD), not_after)
             if not s:
                 print(f"  ! {name} ({ticker}): no usable history", file=sys.stderr)
                 continue
@@ -381,14 +410,14 @@ def fetch_indices_week(yf, monday=None):
     return out, asof
 
 
-def fetch_stocks_week(yf, monday, friday):
+def fetch_stocks_week(yf, monday, friday, not_after=None):
     symbols = [f"{s}.NS" for s in CONSTITUENTS]
     data = yf.download(symbols, period=WEEK_PERIOD, group_by="ticker",
                        progress=False, threads=True, auto_adjust=False)
     rows, missing = [], []
     for sym, (label, sector) in CONSTITUENTS.items():
         try:
-            m = week_move(_series(data[f"{sym}.NS"]), monday, friday)
+            m = week_move(_series(data[f"{sym}.NS"], not_after), monday, friday)
             if m is None:
                 missing.append(sym)
                 continue
@@ -441,18 +470,21 @@ def fetch_week():
     except ImportError:
         raise DataError("yfinance is not installed (pip install yfinance)")
 
+    mode = os.environ.get("BB_MODE", "previous_session")
+    want = expected_session(mode=mode)
+
     print("fetching indices…")
-    indices, asof = fetch_indices_week(yf)
+    indices, asof = fetch_indices_week(yf, not_after=want)
 
     # Same guard as the daily path, same reason: a wrap labelled with the
     # wrong week is worse than no wrap. On a Saturday the session owed is
     # Friday, which is what previous_session resolves to.
-    age = check_freshness(asof, os.environ.get("BB_MODE", "previous_session"))
+    age = check_freshness(asof, mode)
     print(f"week ends {asof} ({age} session(s) old) — freshness OK")
 
     monday, friday = week_bounds(asof)
     print(f"fetching constituents for {monday} … {friday}")
-    stocks = fetch_stocks_week(yf, monday, friday)
+    stocks = fetch_stocks_week(yf, monday, friday, not_after=want)
 
     ranked = sorted(stocks, key=lambda r: -r["pct"])
     sessions = max((r["sessions"] for r in stocks), default=0)

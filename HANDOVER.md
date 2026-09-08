@@ -8,7 +8,7 @@ the state, a decision, or a gotcha below. There is no automation enforcing it �
 a CI check would either cry wolf on every push or be a warning nobody sees, and
 the doc is short enough that keeping it honest is cheaper than policing it.
 
-Last updated: 2026-09-08. Scheduled runs have fired 0 times out of 2.
+Last updated: 2026-09-08, after a late manual run exposed the partial-bar bug.
 
 ---
 
@@ -156,6 +156,14 @@ exits quietly if so. The two kinds are checked independently, so a posted Reel
 does not block the carousel. The day boundary is IST, not UTC — a 01:00 IST
 post carries a previous-day UTC timestamp and still counts as today.
 
+**`settled_only()` drops bars for sessions still in progress.** Yahoo
+publishes a PARTIAL bar for the day in progress. At 08:00 IST there is no bar
+for today so nothing notices; at 12:37 there is, and it broke the run twice
+over — the freshness guard saw a session from the future and refused, and
+without that guard the post would have carried an intraday number labelled as
+a close. The session owed is computed before fetching and anything later is
+dropped, so the brief reports the last *settled* session at any hour.
+
 **A brief that lands after 15:30 IST refuses to post.** `call_deadline()`
 returns `None` and `run_daily` exits. A morning brief asking "above or below
 at today's close" after the close has already happened is worse than no post.
@@ -207,6 +215,12 @@ round minutes, three attempts a day, idempotent publishing). Root cause still
 unknown; the heartbeat workflow exists to settle it. **A missed day still
 produces no alarm** — GitHub emails on failure, never on a run that never
 happened.
+
+**Time-of-day assumptions hide until the schedule slips.** Two separate
+faults surfaced only because a run landed at noon instead of 08:00: copy that
+said "comment before 9:15", and a data layer that assumed no bar existed for
+today. Both were invisible for as long as the job ran on time. When fixing
+anything that runs on a schedule, ask what it does at the wrong hour.
 
 **A fix on disk is not a fix.** Twice, patched files were never committed and the
 same traceback came back, reading as "the fix didn't work". Check

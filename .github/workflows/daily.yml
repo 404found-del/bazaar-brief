@@ -64,6 +64,7 @@ jobs:
       # one a morning brief is owed, so a stale feed fails here rather than
       # putting the wrong day's market on the grid.
       - name: Build the brief
+        id: build
         env:
           BB_MODE: previous_session
           PAGES_BASE: ${{ steps.pages.outputs.base_url }}
@@ -141,7 +142,12 @@ jobs:
       # the discovery post because the conversion post broke is the wrong
       # trade.
       - name: Post the Reel
-        if: ${{ always() && (github.event_name == 'schedule' || github.event.inputs.dry_run != 'yes') }}
+        # always() so a failed carousel publish does not cost the Reel — but
+        # only if the build actually produced one. Without the outcome check
+        # a failed build is followed by a second, confusing traceback about
+        # a missing reel_url.txt.
+        if: ${{ always() && steps.build.outcome == 'success'
+            && (github.event_name == 'schedule' || github.event.inputs.dry_run != 'yes') }}
         env:
           META_LONG_LIVED_TOKEN: ${{ secrets.META_LONG_LIVED_TOKEN }}
         run: |
