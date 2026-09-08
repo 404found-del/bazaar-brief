@@ -6,7 +6,8 @@ name: Weekly wrap
 # post competes against less.
 on:
   schedule:
-    - cron: '41 3 * * 6'
+    - cron: '41 3 * * 6'       # 09:11 IST — the intended slot
+    - cron: '41 5 * * 6'       # 11:11 IST — backstop, a no-op if the first landed
   workflow_dispatch:
     inputs:
       dry_run:
@@ -127,7 +128,9 @@ jobs:
         if: ${{ github.event_name == 'schedule' || github.event.inputs.dry_run != 'yes' }}
         env:
           META_LONG_LIVED_TOKEN: ${{ secrets.META_LONG_LIVED_TOKEN }}
-        run: python publish.py --urls urls.json --caption caption.txt
+        run: |
+          python publish.py --urls urls.json --caption caption.txt \
+            --skip-if-posted-today carousel
 
       - name: Post the Reel
         if: ${{ always() && (github.event_name == 'schedule' || github.event.inputs.dry_run != 'yes') }}
@@ -135,6 +138,7 @@ jobs:
           META_LONG_LIVED_TOKEN: ${{ secrets.META_LONG_LIVED_TOKEN }}
         run: |
           python publish.py --caption caption_reel.txt \
+            --skip-if-posted-today reel \
             --reel "$(cat reel_url.txt)" \
             --cover "$(python -c "import json;print(json.load(open('urls.json'))[0])")"
 

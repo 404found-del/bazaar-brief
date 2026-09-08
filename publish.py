@@ -221,6 +221,38 @@ def refresh_token(token):
     return r["access_token"], days
 
 
+IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
+
+
+def posted_today(ig_id, token, kind, lookback=10):
+    """Has this kind of post already gone out today (IST)?
+
+    This is what makes redundancy safe. Without it, a backstop cron
+    double-posts, and re-running a partially failed workflow re-posts
+    whatever succeeded the first time -- which the first live Reel came
+    within one step of doing.
+
+    Returns the offending media dict, or None.
+    """
+    r = get(f"/{ig_id}/media",
+            fields="id,timestamp,media_type,media_product_type",
+            limit=lookback, access_token=token)
+    today = dt.datetime.now(IST).date()
+    for m in r.get("data", []):
+        ts = (m.get("timestamp") or "").replace("Z", "+00:00")
+        try:
+            when = dt.datetime.fromisoformat(ts).astimezone(IST).date()
+        except ValueError:
+            continue
+        if when != today:
+            continue                    # newest first, so this is far enough
+        if kind == "reel" and m.get("media_product_type") == "REELS":
+            return m
+        if kind == "carousel" and m.get("media_type") == "CAROUSEL_ALBUM":
+            return m
+    return None
+
+
 # ------------------------------------------------------- expiry bookkeeping
 #
 # Meta will not tell us when this token dies without an app secret we do not
@@ -330,6 +362,10 @@ def main():
     ap.add_argument("--caption", help="text file holding the caption")
     ap.add_argument("--dry-run", action="store_true",
                     help="build containers but stop short of publishing")
+    ap.add_argument("--skip-if-posted-today", choices=("carousel", "reel"),
+                    metavar="KIND",
+                    help="exit quietly if that kind of post already went out "
+                         "today (IST) — makes backstop crons and re-runs safe")
     a = ap.parse_args()
 
     configured, token = load_env()
@@ -356,6 +392,15 @@ def main():
             ap.error("--caption plus one of --urls / --reel is required to publish")
 
         ig_id, _ = resolve_user_id(token, configured)
+
+        if a.skip_if_posted_today and not a.dry_run:
+            already = posted_today(ig_id, token, a.skip_if_posted_today)
+            if already:
+                print(f"→ a {a.skip_if_posted_today} already went out today "
+                      f"(media {already['id']}, {already['timestamp']}) — "
+                      f"nothing to do")
+                return
+
         caption = open(a.caption, encoding="utf-8").read().strip()
         if a.reel:
             publish_reel(ig_id, token, a.reel, caption, a.cover, dry_run=a.dry_run)

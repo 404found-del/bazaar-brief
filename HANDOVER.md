@@ -8,7 +8,7 @@ the state, a decision, or a gotcha below. There is no automation enforcing it �
 a CI check would either cry wolf on every push or be a warning nobody sees, and
 the doc is short enough that keeping it honest is cheaper than policing it.
 
-Last updated: 2026-09-07, after GitHub dropped the first scheduled daily run.
+Last updated: 2026-09-08. Scheduled runs have fired 0 times out of 2.
 
 ---
 
@@ -46,9 +46,13 @@ weekly wrap for 31 Aug–04 Sep. Its caption wrongly ends with "Swipe for…"
 Slides for `week-2026-09-04` may still be live on the domain because the cleanup
 job only runs when the post job succeeds.
 
-**Still not run unattended.** The first scheduled daily, Monday 2026-09-07,
-**did not run at all** — GitHub dropped it, no run listed in Actions. Nothing
-in the repo was wrong. See §6.
+**Still never run unattended.** Both scheduled dailies (Mon 09-07, Tue 09-08)
+produced no run at all. Six workflow runs exist in total; **all six were manual
+dispatches**. Everything checkable is correct — public repo, not a fork,
+default branch `main`, workflow not disabled, valid cron, pushed, and manual
+dispatch works. Cause unresolved; `schedule-test.yml` is a temporary heartbeat
+(every 15 min) to establish whether `schedule` fires here at all. **Delete it
+once it has answered.** See §6.
 
 ### Workflows
 
@@ -141,6 +145,17 @@ GitHub emails on failure and says nothing about a warning.
 ships an ffmpeg built only for recording webm — it exists, runs, and cannot
 encode H.264.
 
+**Each publication has several crons, not one.** Daily fires at 08:07, 09:47
+and 11:17 IST; weekly at 09:11 and 11:11. GitHub's scheduler is best-effort and
+missed two days running, and a daily publication cannot rest on one attempt.
+Redundancy is only safe because of the next item.
+
+**`publish.py --skip-if-posted-today {carousel,reel}` makes repeats idempotent.**
+It asks `/me/media` whether that kind of post already went out today (IST) and
+exits quietly if so. The two kinds are checked independently, so a posted Reel
+does not block the carousel. The day boundary is IST, not UTC — a 01:00 IST
+post carries a previous-day UTC timestamp and still counts as today.
+
 **A brief that lands after 15:30 IST refuses to post.** `call_deadline()`
 returns `None` and `run_daily` exits. A morning brief asking "above or below
 at today's close" after the close has already happened is worse than no post.
@@ -184,12 +199,14 @@ the dashboard.
 second upload under the same name leaves `deploy-pages` with two candidates and
 it refuses. Artifacts are now named by `run_attempt`.
 
-**GitHub silently drops scheduled runs.** Not delayed — absent, with no run
-in Actions and no notification. Happened on the very first scheduled daily.
-Crons now sit off the half-hour (`37 2`, `41 3`) because round slots are the
-most oversubscribed, but that is a mitigation, not a fix: the schedule is
-best-effort by design. **A missed day currently produces no alarm at all** —
-the only signal is nobody posting. Worth fixing (§7).
+**Scheduled runs have never fired here.** Two chances, two misses, no run
+listed either day and no notification. Ruled out: repo visibility, fork status,
+default branch, workflow disabled, cron syntax, unpushed commits — and manual
+dispatch works, which proves the file parses. Mitigations in place (crons off
+round minutes, three attempts a day, idempotent publishing). Root cause still
+unknown; the heartbeat workflow exists to settle it. **A missed day still
+produces no alarm** — GitHub emails on failure, never on a run that never
+happened.
 
 **A fix on disk is not a fix.** Twice, patched files were never committed and the
 same traceback came back, reading as "the fix didn't work". Check
@@ -212,12 +229,14 @@ reading, and `instagram_business_manage_comments` **is already granted**.
 `META_LONG_LIVED_TOKEN` secret, commit the updated `token_status.json`. The
 guard will fail the Monday job from 14 days out.
 
-**A dropped schedule is invisible.** GitHub emails on failure, never on a run
-that never happened. The shape of a fix: a backstop cron a couple of hours
-later, made safe by an idempotency check — ask `/me/media` whether anything
-was already posted today (IST) and skip if so. That same check would also make
-re-runs safe, which they currently are not: re-running a partially failed
-workflow can post the Reel twice.
+**Read `schedule-test.yml`'s result, then delete it.** If scheduled runs
+appear, the daily was unlucky and the backstops are enough. If none appear in
+an hour, scheduling does not work in this repo and the trigger has to move off
+GitHub — most likely an external cron calling the `workflow_dispatch` API,
+which costs a PAT that itself expires.
+
+**A missed day is still silent.** Nothing alarms when a run simply never
+happens. Worth a check that notices the account did not post.
 
 **Bio** still needs updating to the morning-brief wording.
 

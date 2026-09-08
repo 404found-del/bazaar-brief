@@ -5,7 +5,13 @@ name: Daily brief
 # under load; harmless here, since nothing depends on the exact minute.
 on:
   schedule:
-    - cron: '37 2 * * 1-5'
+    # Three chances, not one. GitHub's scheduler is best-effort and dropped
+    # two consecutive days; a daily publication cannot rest on one attempt.
+    # Whichever fires first posts, and the rest are no-ops because publish.py
+    # checks whether the post already went out today.
+    - cron: '37 2 * * 1-5'     # 08:07 IST — the intended slot
+    - cron: '17 4 * * 1-5'     # 09:47 IST — backstop
+    - cron: '47 5 * * 1-5'     # 11:17 IST — last chance before the copy expires
   workflow_dispatch:
     inputs:
       dry_run:
@@ -126,7 +132,9 @@ jobs:
         if: ${{ github.event_name == 'schedule' || github.event.inputs.dry_run != 'yes' }}
         env:
           META_LONG_LIVED_TOKEN: ${{ secrets.META_LONG_LIVED_TOKEN }}
-        run: python publish.py --urls urls.json --caption caption.txt
+        run: |
+          python publish.py --urls urls.json --caption caption.txt \
+            --skip-if-posted-today carousel
 
       # The Reel is what reaches people who don't follow you yet. It goes out
       # even if the carousel failed — they are independent posts, and losing
@@ -138,6 +146,7 @@ jobs:
           META_LONG_LIVED_TOKEN: ${{ secrets.META_LONG_LIVED_TOKEN }}
         run: |
           python publish.py --caption caption_reel.txt \
+            --skip-if-posted-today reel \
             --reel "$(cat reel_url.txt)" \
             --cover "$(python -c "import json;print(json.load(open('urls.json'))[0])")"
 
